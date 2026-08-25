@@ -1,0 +1,303 @@
+@description('Primary Azure region selected by the repository region evaluation.')
+param location string
+
+@description('Supported Azure SRE Agent region.')
+param sreLocation string = 'eastus2'
+
+@description('Stable prefix for resources owned by this resource group.')
+param resourcePrefix string
+
+@description('Tags applied to every resource that supports tags.')
+param tags object
+
+@description('Name of the shared workspace-based Application Insights component.')
+param applicationInsightsName string
+
+@description('Resource ID of the Log Analytics workspace backing Application Insights.')
+param logAnalyticsWorkspaceResourceId string
+
+var readerRoleId = 'acdd72a7-3385-48ef-bd42-f606fba81ae7'
+var monitoringReaderRoleId = '43d0d8ad-25c7-4714-9337-8ba259a9fe05'
+var logAnalyticsReaderRoleId = '73c42c96-874c-492b-b04d-ab87d138a893'
+
+resource applicationInsights 'Microsoft.Insights/components@2020-02-02' existing = {
+  name: applicationInsightsName
+}
+
+resource sreIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30' = {
+  name: '${resourcePrefix}-sre'
+  location: sreLocation
+  tags: union(tags, {
+    component: 'contoso-sre'
+    platform: 'azure-sre-agent'
+  })
+}
+
+resource approvalsIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30' = {
+  name: '${resourcePrefix}-approvals'
+  location: location
+  tags: union(tags, {
+    component: 'contoso-approvals'
+    platform: 'logic-apps-agent-loop'
+  })
+}
+
+resource sreAgent 'Microsoft.App/agents@2026-01-01' = {
+  name: '${resourcePrefix}-sre-control-plane'
+  location: sreLocation
+  tags: union(tags, {
+    component: 'contoso-sre'
+    'service-name': 'contoso-sre-control-plane'
+    platform: 'azure-sre-agent'
+  })
+  identity: {
+    type: 'SystemAssigned,UserAssigned'
+    userAssignedIdentities: {
+      '${sreIdentity.id}': {}
+    }
+  }
+  properties: {
+    actionConfiguration: {
+      accessLevel: 'Low'
+      identity: sreIdentity.id
+      mode: 'Review'
+    }
+    defaultModel: {
+      name: 'Automatic'
+      provider: 'MicrosoftFoundry'
+    }
+    knowledgeGraphConfiguration: {
+      identity: sreIdentity.id
+      managedResources: [
+        resourceGroup().id
+      ]
+    }
+    logConfiguration: {
+      applicationInsightsConfiguration: {
+        appId: applicationInsights.properties.AppId
+        connectionString: applicationInsights.properties.ConnectionString
+      }
+    }
+    upgradeChannel: 'Stable'
+  }
+}
+
+resource approvalsWorkflow 'Microsoft.Logic/workflows@2019-05-01' = {
+  name: '${resourcePrefix}-approvals-loop'
+  location: location
+  kind: 'Agentic'
+  tags: union(tags, {
+    component: 'contoso-approvals'
+    'service-name': 'contoso-approvals-loop'
+    platform: 'logic-apps-agent-loop'
+    status: 'public-preview'
+  })
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${approvalsIdentity.id}': {}
+    }
+  }
+  properties: {
+    state: 'Enabled'
+    definition: {
+      '$schema': 'https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#'
+      contentVersion: '1.0.0.0'
+      metadata: {
+        agentType: 'autonomous'
+      }
+      triggers: {
+        Receive_synthetic_approval_scenario: {
+          type: 'Request'
+          kind: 'Http'
+          inputs: {
+            schema: {
+              type: 'object'
+              properties: {
+                scenario: {
+                  type: 'string'
+                }
+                synthetic: {
+                  type: 'boolean'
+                }
+              }
+              required: [
+                'scenario'
+                'synthetic'
+              ]
+            }
+          }
+        }
+      }
+      actions: {
+        Approval_triage_agent: {
+          type: 'Agent'
+          inputs: {
+            parameters: {
+              agentModelType: 'AzureOpenAI'
+              modelId: 'gpt-4o-mini'
+              messages: [
+                {
+                  role: 'System'
+                  content: 'Classify only synthetic Contoso approval scenarios. Never execute a change. Always call the recommendation tool and require a human decision.'
+                }
+                {
+                  role: 'User'
+                  content: '@triggerBody()?[\'scenario\']'
+                }
+              ]
+              agentModelSettings: {
+                maxTokens: 800
+                agentHistoryReductionSettings: {
+                  agentHistoryReductionType: 'maximumTokenCountReduction'
+                  maximumTokenCount: 4096
+                }
+                agentChatCompletionSettings: {
+                  temperature: 0
+                }
+              }
+            }
+          }
+          tools: {
+            Create_approval_recommendation: {
+              description: 'Return a synthetic recommendation for human review. This tool cannot mutate Azure or external systems.'
+              agentParameterSchema: {
+                type: 'object'
+                properties: {
+                  recommendation: {
+                    type: 'string'
+                    description: 'Recommend approve, reject, or investigate.'
+                  }
+                  rationale: {
+                    type: 'string'
+                    description: 'A short evidence-based explanation.'
+                  }
+                }
+                required: [
+                  'recommendation'
+                  'rationale'
+                ]
+              }
+              actions: {
+                Build_recommendation: {
+                  type: 'Compose'
+                  inputs: {
+                    recommendation: '@agentParameters(\'recommendation\')'
+                    rationale: '@agentParameters(\'rationale\')'
+                    requiresHumanApproval: true
+                    synthetic: true
+                  }
+                }
+              }
+            }
+          }
+          runAfter: {}
+          limit: {
+            count: 5
+            timeout: 'PT5M'
+          }
+        }
+        Return_recommendation: {
+          type: 'Response'
+          kind: 'Http'
+          inputs: {
+            statusCode: 202
+            body: {
+              message: 'Synthetic recommendation generated; no change was executed.'
+              result: '@body(\'Approval_triage_agent\')'
+            }
+          }
+          runAfter: {
+            Approval_triage_agent: [
+              'Succeeded'
+            ]
+          }
+        }
+      }
+      outputs: {}
+    }
+    parameters: {}
+  }
+}
+
+#disable-next-line use-recent-api-versions
+resource approvalsDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  name: '${resourcePrefix}-approvals-platform-logs'
+  scope: approvalsWorkflow
+  properties: {
+    workspaceId: logAnalyticsWorkspaceResourceId
+    logs: [
+      {
+        categoryGroup: 'allLogs'
+        enabled: true
+      }
+    ]
+    metrics: [
+      {
+        category: 'AllMetrics'
+        enabled: true
+      }
+    ]
+  }
+}
+
+resource sreUserReader 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(resourceGroup().id, sreIdentity.id, readerRoleId)
+  properties: {
+    principalId: sreIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', readerRoleId)
+  }
+}
+
+resource sreUserMonitoringReader 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(resourceGroup().id, sreIdentity.id, monitoringReaderRoleId)
+  properties: {
+    principalId: sreIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', monitoringReaderRoleId)
+  }
+}
+
+resource sreUserLogReader 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(applicationInsights.id, sreIdentity.id, logAnalyticsReaderRoleId)
+  scope: applicationInsights
+  properties: {
+    principalId: sreIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', logAnalyticsReaderRoleId)
+  }
+}
+
+resource sreSystemReader 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(resourceGroup().id, sreAgent.id, readerRoleId)
+  properties: {
+    principalId: sreAgent.identity.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', readerRoleId)
+  }
+}
+
+resource sreSystemMonitoringReader 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(resourceGroup().id, sreAgent.id, monitoringReaderRoleId)
+  properties: {
+    principalId: sreAgent.identity.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', monitoringReaderRoleId)
+  }
+}
+
+resource sreSystemLogReader 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(applicationInsights.id, sreAgent.id, logAnalyticsReaderRoleId)
+  scope: applicationInsights
+  properties: {
+    principalId: sreAgent.identity.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', logAnalyticsReaderRoleId)
+  }
+}
+
+output sreAgentName string = sreAgent.name
+output sreIdentityName string = sreIdentity.name
+output approvalsWorkflowName string = approvalsWorkflow.name
+output approvalsIdentityName string = approvalsIdentity.name

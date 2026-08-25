@@ -1,6 +1,7 @@
 using './main.bicep'
 
 param location = 'northcentralus'
+param sreLocation = 'eastus2'
 param resourcePrefix = 'contoso-agents'
 param projectNames = [
   'travel'

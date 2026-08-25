@@ -45,6 +45,9 @@ jobs:
       - name: Ownership boundary (plan)
         run: foundry boundary --no-live
 
+      - name: Control Plane platform declarations
+        run: foundry platform-inventory --no-live
+
   # The published site is the thing a stranger sees, so its gates run on their own.
   site:
     name: docs build and public-content scan

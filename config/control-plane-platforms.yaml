@@ -1,0 +1,37 @@
+version: 1
+resource_group: rg-contoso-agents
+ownership_tags:
+  project: contoso-agents
+  managed-by: microsoft-foundry-demo
+  boundary: rg-contoso-agents
+platforms:
+  - id: contoso-sre
+    display_name: Contoso SRE
+    platform: Azure SRE Agent
+    resource_name: contoso-agents-sre-control-plane
+    resource_type: Microsoft.App/agents
+    api_version: 2026-01-01
+    identity_type: SystemAssigned,UserAssigned
+    control_plane:
+      discovery: automatic
+      lifecycle:
+        - start
+        - stop
+      observability: supported
+    source: https://learn.microsoft.com/azure/foundry/control-plane/how-to-manage-agents
+  - id: contoso-approvals
+    display_name: Contoso Approvals
+    platform: Azure Logic Apps agent loop
+    resource_name: contoso-agents-approvals-loop
+    resource_type: Microsoft.Logic/workflows
+    api_version: 2019-05-01
+    identity_type: UserAssigned
+    expected_kind: Agentic
+    expected_action_type: Agent
+    control_plane:
+      discovery: automatic
+      lifecycle:
+        - start
+        - stop
+      observability: unsupported
+    source: https://learn.microsoft.com/azure/foundry/control-plane/how-to-manage-agents

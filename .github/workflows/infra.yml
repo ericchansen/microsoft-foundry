@@ -24,7 +24,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: infrastructure-${{ github.ref }}
+  group: infrastructure-rg-contoso-agents
   cancel-in-progress: false
 
 jobs:
@@ -48,6 +48,9 @@ jobs:
 
       - name: Enforce ownership boundary
         run: foundry boundary --no-live
+
+      - name: Validate Control Plane platform declarations
+        run: foundry platform-inventory --no-live
 
       - name: Lint and build without tracked ARM output
         run: |
@@ -98,6 +101,14 @@ jobs:
       - name: Verify owned resource group
         run: |
           test "$(az group show --name "$RESOURCE_GROUP" --query tags.boundary -o tsv)" = "$RESOURCE_GROUP"
+
+      - name: Refuse concurrent resource-group deployments
+        run: |
+          active="$(az deployment group list \
+            --resource-group "$RESOURCE_GROUP" \
+            --query "[?properties.provisioningState=='Running' || properties.provisioningState=='Accepted'].name" \
+            -o tsv)"
+          test -z "$active"
 
       - name: What-if
         if: inputs.operation == 'what-if'

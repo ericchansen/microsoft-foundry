@@ -40,6 +40,9 @@ provider's location list.
 | Overview | <https://learn.microsoft.com/azure/sre-agent/overview> |
 | Supported regions | <https://learn.microsoft.com/azure/sre-agent/supported-regions> |
 | Pricing and billing | <https://learn.microsoft.com/azure/sre-agent/pricing-billing> |
+| Infrastructure as code | <https://learn.microsoft.com/azure/sre-agent/deploy-iac> |
+| ARM resource definition | <https://learn.microsoft.com/azure/templates/microsoft.app/2026-01-01/agents> |
+| Supported regions | <https://learn.microsoft.com/azure/sre-agent/supported-regions> |
 
 Billed in Azure Agent Units. The AAU consumption rates are published; a
 USD-per-AAU conversion is not, and the Retail Prices API returns no SRE Agent
@@ -52,6 +55,7 @@ meter. See [Cost model](../platform/costs.md).
 | Agentic workflow concepts | <https://learn.microsoft.com/azure/logic-apps/agent-workflows-concepts> |
 | Creating autonomous agent workflows | <https://learn.microsoft.com/azure/logic-apps/create-autonomous-agent-workflows> |
 | Pricing | <https://azure.microsoft.com/pricing/details/logic-apps/> |
+| Consumption autonomous workflow guide | <https://learn.microsoft.com/azure/logic-apps/create-autonomous-agent-workflows> |
 
 !!! warning "Public preview"
     Consumption autonomous agentic workflows are in public preview. Microsoft
@@ -70,6 +74,16 @@ provider, which is what region selection does.
 
 The monthly free grants are a **billing credit**, not a price tier, so they never
 appear in a Retail Prices API response. The cost model subtracts them explicitly.
+
+## Microsoft Foundry Control Plane
+
+| Topic | Source |
+| --- | --- |
+| Inventory, supported platforms, observability and lifecycle | <https://learn.microsoft.com/azure/foundry/control-plane/how-to-manage-agents> |
+
+Control Plane automatically discovers Azure SRE Agent and Logic Apps agent
+loops. Both platforms support start and stop. Logic Apps agent loops appear in
+inventory, but their traces and metrics are explicitly unsupported.
 
 ## Azure Monitor
 

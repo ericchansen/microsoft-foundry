@@ -27,6 +27,7 @@ az account set --subscription "<your subscription>"
 | `foundry regions` | yes | Eliminates and ranks candidate regions. |
 | `foundry costs` | no | Prices the estimate live and enforces the budget ceiling. |
 | `foundry boundary` | optional | Validates the ownership boundary. `--no-live` skips the Azure checks. |
+| `foundry platform-inventory` | optional | Verifies SRE Agent and Logic Apps Control Plane platform coverage. |
 | `foundry scan <path>` | no | Fails if publishable content contains an identifier or secret. |
 
 `foundry costs` and `foundry scan` need no Azure credentials, so anyone can
@@ -74,9 +75,10 @@ Every push runs:
 2. `pytest` — the scanner rules, the tier maths and the ownership-boundary rules.
    No test needs network access or an Azure login.
 3. `foundry boundary --no-live` — the plan can never drift out of the boundary.
-4. `foundry costs` — live pricing against the real API, hard-failing over budget.
-5. `mkdocs build --strict` — a broken internal link fails the build.
-6. `foundry scan site` — the publishing gate above.
+4. `foundry platform-inventory --no-live` — both platform declarations remain machine-checkable.
+5. `foundry costs` — live pricing against the real API, hard-failing over budget.
+6. `mkdocs build --strict` — a broken internal link fails the build.
+7. `foundry scan site` — the publishing gate above.
 
 The cost gate runs against live prices deliberately. If Microsoft raises a price
 enough to push the platform over budget, the build should break — that is the

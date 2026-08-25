@@ -3,6 +3,9 @@ targetScope = 'resourceGroup'
 @description('Azure region selected by the repository region evaluation.')
 param location string = 'northcentralus'
 
+@description('Azure region supported by Azure SRE Agent.')
+param sreLocation string = 'eastus2'
+
 @description('Stable prefix for resources owned by this resource group.')
 @minLength(3)
 @maxLength(24)
@@ -153,6 +156,18 @@ resource projectPrivilegedMonitoringReaders 'Microsoft.Authorization/roleAssignm
   }
 }]
 
+module controlPlanePlatforms 'modules/control-plane-platforms.bicep' = {
+  name: 'control-plane-platforms'
+  params: {
+    location: location
+    sreLocation: sreLocation
+    resourcePrefix: resourcePrefix
+    tags: tags
+    applicationInsightsName: applicationInsights.name
+    logAnalyticsWorkspaceResourceId: monitoring.outputs.logAnalyticsWorkspaceResourceId
+  }
+}
+
 module identities 'modules/identity.bicep' = {
   name: 'identities'
   params: {
@@ -226,3 +241,7 @@ output containerRegistryName string = secureData.outputs.containerRegistryName
 output deployIdentityName string = identities.outputs.deployIdentityName
 output deployIdentityClientId string = identities.outputs.deployIdentityClientId
 output runtimeIdentityName string = identities.outputs.runtimeIdentityName
+output sreAgentName string = controlPlanePlatforms.outputs.sreAgentName
+output sreIdentityName string = controlPlanePlatforms.outputs.sreIdentityName
+output approvalsWorkflowName string = controlPlanePlatforms.outputs.approvalsWorkflowName
+output approvalsIdentityName string = controlPlanePlatforms.outputs.approvalsIdentityName

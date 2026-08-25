@@ -69,6 +69,15 @@ resources:
   - name: monthly-budget
     kind: Microsoft.Consumption/budgets
     scope: providers/Microsoft.Consumption/budgets/contoso-agents-monthly
+  - name: api-management
+    kind: Microsoft.ApiManagement/service
+    scope: providers/Microsoft.ApiManagement/service/contoso-agents-gateway
+  - name: sre-agent
+    kind: Microsoft.App/agents
+    scope: providers/Microsoft.App/agents/contoso-agents-sre-control-plane
+  - name: approvals-loop
+    kind: Microsoft.Logic/workflows
+    scope: providers/Microsoft.Logic/workflows/contoso-agents-approvals-loop
 
 # Identities. All are created inside the boundary. Reusing any pre-existing
 # identity is rejected by the `plan:no-reuse` check.
@@ -80,6 +89,14 @@ identities:
   - name: github-deploy-identity
     kind: Microsoft.ManagedIdentity/userAssignedIdentities
     scope: providers/Microsoft.ManagedIdentity/userAssignedIdentities/contoso-agents-github-deploy
+    reuse_existing: false
+  - name: sre-agent-identity
+    kind: Microsoft.ManagedIdentity/userAssignedIdentities
+    scope: providers/Microsoft.ManagedIdentity/userAssignedIdentities/contoso-agents-sre
+    reuse_existing: false
+  - name: approvals-loop-identity
+    kind: Microsoft.ManagedIdentity/userAssignedIdentities
+    scope: providers/Microsoft.ManagedIdentity/userAssignedIdentities/contoso-agents-approvals
     reuse_existing: false
 
 # Role assignments. Every scope is inside the resource group; nothing is granted
@@ -129,6 +146,35 @@ role_assignments:
     role: Privileged Monitoring Data Reader
     principal: platform-project
     scope: providers/microsoft.insights/components/contoso-agents-insights
+  - name: sre-user-reads-owned-resources
+    role: Reader
+    principal: sre-agent-identity
+    scope: .
+  - name: sre-user-reads-monitoring
+    role: Monitoring Reader
+    principal: sre-agent-identity
+    scope: .
+  - name: sre-user-reads-logs
+    role: Log Analytics Reader
+    principal: sre-agent-identity
+    scope: providers/microsoft.insights/components/contoso-agents-insights
+  - name: sre-system-reads-owned-resources
+    role: Reader
+    principal: sre-agent
+    scope: .
+  - name: sre-system-reads-monitoring
+    role: Monitoring Reader
+    principal: sre-agent
+    scope: .
+  - name: sre-system-reads-logs
+    role: Log Analytics Reader
+    principal: sre-agent
+    scope: providers/microsoft.insights/components/contoso-agents-insights
+
+diagnostic_settings:
+  - name: approvals-platform-logs
+    kind: Microsoft.Insights/diagnosticSettings
+    scope: providers/Microsoft.Logic/workflows/contoso-agents-approvals-loop
 
 # Teardown. Deleting the resource group removes everything above in one action,
 # which is the point of keeping the blast radius to a single group.

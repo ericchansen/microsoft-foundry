@@ -31,6 +31,18 @@ time. Foundry uses [OpenTelemetry semantic conventions for generative
 AI](https://opentelemetry.io/docs/specs/semconv/gen-ai/) and stores the traces in
 [Application Insights](https://learn.microsoft.com/azure/foundry/observability/how-to/trace-agent-setup).
 
+Contoso SRE also connects directly to this Application Insights component with
+the distinct service name `contoso-sre-control-plane`. Contoso Approvals sends
+supported Logic Apps platform diagnostics to the same backing Log Analytics
+workspace.
+
+!!! warning "Logic Apps agent-loop traces are not supported"
+    Shared storage does not create support where the source platform has none.
+    Current [Foundry Control Plane
+    documentation](https://learn.microsoft.com/azure/foundry/control-plane/how-to-manage-agents#azure-logic-apps-agent-loop)
+    says traces and metrics are unsupported for Logic Apps agent loops. Their
+    runtime diagnostics remain platform logs, not agent observability.
+
 ## Identity and access
 
 Each project has its own system-assigned identity. The deployment grants every
@@ -58,6 +70,7 @@ Everything is owned by the dedicated `rg-contoso-agents` boundary:
 - OAuth-default Storage with shared-key access disabled;
 - Basic Azure Container Registry with admin access disabled;
 - dedicated deployment and runtime managed identities;
+- dedicated Contoso SRE and Contoso Approvals managed identities;
 - a monthly budget and alert group at 50%, 80%, and forecast 100%.
 
 The complete deployment is declarative in Bicep. Current

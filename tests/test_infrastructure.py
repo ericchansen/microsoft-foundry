@@ -19,6 +19,7 @@ def infra(repo_root: Path) -> dict[str, str]:
         "monitoring": repo_root / "infra" / "modules" / "monitoring.bicep",
         "identity": repo_root / "infra" / "modules" / "identity.bicep",
         "data": repo_root / "infra" / "modules" / "secure-data.bicep",
+        "platforms": repo_root / "infra" / "modules" / "control-plane-platforms.bicep",
     }
     return {name: path.read_text(encoding="utf-8") for name, path in paths.items()}
 
@@ -111,6 +112,41 @@ def test_role_assignments_are_principal_driven_and_group_scoped(infra):
 
 def test_current_foundry_user_role_is_pinned(infra):
     assert "53ca6127-db72-4b80-b1b0-d745d6d5456d" in infra["identity"]
+
+
+def test_sre_agent_is_new_isolated_and_review_only(infra):
+    assert "Microsoft.App/agents@2026-01-01" in infra["platforms"]
+    assert "name: '${resourcePrefix}-sre-control-plane'" in infra["platforms"]
+    assert "accessLevel: 'Low'" in infra["platforms"]
+    assert "mode: 'Review'" in infra["platforms"]
+    assert "managedResources:" in infra["platforms"]
+    assert "resourceGroup().id" in infra["platforms"]
+
+
+def test_sre_agent_uses_shared_application_insights(infra):
+    assert "applicationInsights.properties.AppId" in infra["platforms"]
+    assert "applicationInsights.properties.ConnectionString" in infra["platforms"]
+    assert "'service-name': 'contoso-sre-control-plane'" in infra["platforms"]
+
+
+def test_logic_apps_agent_loop_is_bounded_and_synthetic(infra):
+    assert "Microsoft.Logic/workflows@2019-05-01" in infra["platforms"]
+    assert "kind: 'Agentic'" in infra["platforms"]
+    assert "type: 'Agent'" in infra["platforms"]
+    assert "Create_approval_recommendation" in infra["platforms"]
+    assert "requiresHumanApproval: true" in infra["platforms"]
+    assert "synthetic: true" in infra["platforms"]
+    assert "count: 5" in infra["platforms"]
+
+
+def test_platforms_have_dedicated_identities_and_bounded_rbac(infra):
+    assert "'${resourcePrefix}-sre'" in infra["platforms"]
+    assert "'${resourcePrefix}-approvals'" in infra["platforms"]
+    assert "acdd72a7-3385-48ef-bd42-f606fba81ae7" in infra["platforms"]
+    assert "43d0d8ad-25c7-4714-9337-8ba259a9fe05" in infra["platforms"]
+    assert "73c42c96-874c-492b-b04d-ab87d138a893" in infra["platforms"]
+    assert "Contributor" not in infra["platforms"]
+    assert "scope: subscription()" not in infra["platforms"]
 
 
 def test_no_compiled_arm_template_is_tracked(repo_root):

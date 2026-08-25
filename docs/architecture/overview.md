@@ -126,9 +126,10 @@ Two boundaries matter:
 See [Ownership boundary](../platform/boundaries.md) for the machine-checked
 version of this diagram.
 
-## What Phase 0 delivers
+## What the current platform slice delivers
 
-Phase 0 provisions nothing. It delivers the decisions and the machinery that
-checks them: region selection, the priced cost model, the ownership-boundary
-check, and the publishing pipeline for this site. Later phases build on top
-without re-litigating any of it.
+The deployment now includes the shared telemetry spine plus two additional
+[Control Plane platform types](https://learn.microsoft.com/azure/foundry/control-plane/how-to-manage-agents):
+a review-only Azure SRE Agent and a public-preview Logic Apps agent loop. Static
+and live inventory checks keep their identity, ownership, and safety contracts
+machine-verifiable.

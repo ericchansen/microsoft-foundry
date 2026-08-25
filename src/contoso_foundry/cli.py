@@ -15,6 +15,7 @@ from pathlib import Path
 import yaml
 
 from . import boundary as boundary_mod
+from . import control_plane as control_plane_mod
 from . import costs as costs_mod
 from . import discovery as discovery_mod
 from . import regions as regions_mod
@@ -26,6 +27,7 @@ DEFAULT_REPORTS = REPO_ROOT / "reports"
 DEFAULT_CONFIG = REPO_ROOT / "config"
 DEFAULT_ESTIMATE = REPO_ROOT / "costs" / "v1-estimate.yaml"
 DEFAULT_CACHE = REPO_ROOT / "costs" / "price-cache.json"
+DEFAULT_CONTROL_PLANE = DEFAULT_CONFIG / "control-plane-platforms.yaml"
 
 #: Hostnames the published site is *expected* to link to. These are Microsoft's
 #: own portals and documentation, not tenant-specific endpoints.
@@ -226,6 +228,16 @@ def cmd_scan(args: argparse.Namespace) -> int:
     return exit_code
 
 
+def cmd_platform_inventory(args: argparse.Namespace) -> int:
+    config = control_plane_mod.load_config(Path(args.platform_config))
+    report = control_plane_mod.verify(config, live=not args.no_live)
+    _write(Path(args.internal) / "control-plane-inventory.json", control_plane_mod.to_json(report))
+    path = _write(Path(args.reports) / "control-plane-inventory.md", control_plane_mod.render_markdown(report))
+    print(control_plane_mod.render_markdown(report))
+    print(f"report: {path}")
+    return 0 if report.ok else 1
+
+
 # --------------------------------------------------------------------------- #
 
 
@@ -264,6 +276,11 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("scan", help="fail if publishable content contains identifiers or secrets")
     p.add_argument("path", nargs="*", default=[str(REPO_ROOT / "site")])
     p.set_defaults(func=cmd_scan)
+
+    p = sub.add_parser("platform-inventory", help="verify SRE Agent and Logic Apps Control Plane coverage")
+    p.add_argument("--platform-config", default=str(DEFAULT_CONTROL_PLANE))
+    p.add_argument("--no-live", action="store_true", help="validate declarations without querying Azure")
+    p.set_defaults(func=cmd_platform_inventory)
 
     return parser
 

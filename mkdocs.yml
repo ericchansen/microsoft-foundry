@@ -79,8 +79,12 @@ nav:
       - Ownership boundary: platform/boundaries.md
       - Telemetry spine: platform/telemetry-spine.md
       - Power Platform: platform/power-platform.md
+  - Agents:
+      - Contoso SRE: agents/contoso-sre.md
+      - Contoso Approvals: agents/contoso-approvals.md
   - Operations:
       - Verification: operations/verification.md
+      - Control Plane coverage: operations/control-plane-coverage.md
   - Reference:
       - Sources: reference/sources.md
 
