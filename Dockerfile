@@ -3,6 +3,7 @@ FROM python:3.13.7-slim
 WORKDIR /app
 
 COPY agents/research/requirements.txt /app/requirements.txt
+RUN python -m pip install --no-cache-dir --upgrade pip==26.2.1
 RUN python -m pip install --no-cache-dir --requirement /app/requirements.txt
 
 COPY pyproject.toml README.md /app/

@@ -121,6 +121,7 @@ def test_hosted_configuration_routes_exact_versions(repo_root: Path) -> None:
     assert "contoso-research" in unified
     assert "resourceGroup: rg-contoso-agents" in unified
     assert "FROM python:3.13.7-slim" in dockerfile
+    assert "pip==26.2.1" in dockerfile
     assert 'CMD ["python", "-m", "contoso_foundry.research.hosted"]' in dockerfile
     assert {name: "1.0.0" for name in REQUIRED_CONTRACT_VERSIONS} == REQUIRED_CONTRACT_VERSIONS
 
