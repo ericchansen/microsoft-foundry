@@ -1,0 +1,101 @@
+name: ci
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.13"
+
+jobs:
+  # Everything that needs no network beyond PyPI. Fast, and the signal most PRs need.
+  static:
+    name: lint and unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[dev,docs]"
+
+      - name: Ruff
+        run: ruff check .
+
+      - name: Unit tests
+        run: pytest -q
+
+      # Static half of the ownership boundary: proves the *plan* never names a
+      # scope outside rg-contoso-agents. --no-live skips the Azure lookups, which
+      # need credentials CI does not have.
+      - name: Ownership boundary (plan)
+        run: foundry boundary --no-live
+
+  # The published site is the thing a stranger sees, so its gates run on their own.
+  site:
+    name: docs build and public-content scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[dev,docs]"
+
+      # --strict turns broken internal links and unknown config into failures.
+      - name: Build site
+        run: mkdocs build --strict
+
+      # Gate 1 and gate 6: no tenant identifiers in the generated HTML, and
+      # internal/ never reaches the build output.
+      - name: Scan generated site
+        run: foundry scan site
+
+      - name: Lint Markdown
+        run: pymarkdown --config .pymarkdown.json scan docs README.md AGENTS.md
+
+  # Prices move, so this is scheduled as well as PR-triggered: a meter change
+  # should fail on a boring Monday, not the day someone needs to provision.
+  cost:
+    name: cost model under budget
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install
+        run: pip install -e "."
+
+      # Gate 2: prices live against the Retail Prices API and exits non-zero
+      # above the ceiling declared in costs/v1-estimate.yaml. Unauthenticated.
+      - name: Price the v1 estimate
+        run: foundry costs --report reports/cost-report.md
+
+      - name: Upload cost report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cost-report
+          path: reports/cost-report.md
+          if-no-files-found: warn
