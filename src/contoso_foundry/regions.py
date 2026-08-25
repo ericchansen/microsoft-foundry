@@ -41,6 +41,10 @@ def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * EARTH_RADIUS_KM * math.asin(math.sqrt(a))
 
 
+class ProbeFailedError(RuntimeError):
+    """A live Azure probe did not answer, so its result must not be interpreted."""
+
+
 @dataclass
 class GateResult:
     gate: str
@@ -222,12 +226,18 @@ def gate_resource_types(regions: list[Region], config: dict[str, Any]) -> None:
             )
 
 
-def _models_in_region(region: str) -> list[dict[str, Any]]:
-    return azure_cli.try_run(["cognitiveservices", "model", "list", "-l", region], default=[]) or []
+def _models_in_region(region: str) -> list[dict[str, Any]] | None:
+    """Model catalogue for a region, or None if the probe itself failed.
+
+    The distinction matters: `[]` means Azure answered and the region genuinely
+    offers nothing, while `None` means we never got an answer. Collapsing the two
+    would silently eliminate a viable region because of a throttled request.
+    """
+    return azure_cli.try_run(["cognitiveservices", "model", "list", "-l", region], default=None)
 
 
-def _usage_in_region(region: str) -> list[dict[str, Any]]:
-    return azure_cli.try_run(["cognitiveservices", "usage", "list", "-l", region], default=[]) or []
+def _usage_in_region(region: str) -> list[dict[str, Any]] | None:
+    return azure_cli.try_run(["cognitiveservices", "usage", "list", "-l", region], default=None)
 
 
 def gate_models_and_quota(regions: list[Region], config: dict[str, Any], *, workers: int = 8) -> None:
@@ -244,6 +254,16 @@ def gate_models_and_quota(regions: list[Region], config: dict[str, Any], *, work
     with ThreadPoolExecutor(max_workers=workers) as pool:
         models = dict(zip(names, pool.map(_models_in_region, names), strict=True))
         usages = dict(zip(names, pool.map(_usage_in_region, names), strict=True))
+
+    # A probe that never answered cannot be read as "this region has nothing".
+    # Abort rather than publish a ranking derived from partial data.
+    unreachable = sorted(n for n in names if models.get(n) is None or usages.get(n) is None)
+    if unreachable:
+        raise ProbeFailedError(
+            "could not read the model catalogue or quota for: "
+            f"{', '.join(unreachable)}. Refusing to eliminate regions on the strength of a failed probe. "
+            "Check `az login` and retry."
+        )
 
     for spec in config.get("models", {}).get("required", []):
         pattern = re.compile(spec["name_pattern"])

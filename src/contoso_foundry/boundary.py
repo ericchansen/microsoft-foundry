@@ -26,7 +26,14 @@ from . import azure_cli
 RESOURCE_GROUP_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9._\-()]{0,88}[a-z0-9_()]$")
 
 #: Role-assignment scopes that are never acceptable for this project.
+# Scopes that would place a role assignment above the resource group. Two shapes
+# have to be covered: ARM paths, and the human-readable words a plan author is
+# most likely to reach for. `scope: subscription` is relative and contains no
+# `subscriptions/` segment, so nothing else in this module would catch it.
 _FORBIDDEN_SCOPE_PREFIXES = ("/", "/subscriptions", "/providers/Microsoft.Management")
+_FORBIDDEN_SCOPE_WORDS = frozenset(
+    {"subscription", "tenant", "management-group", "management group", "root", "/"}
+)
 
 
 @dataclass
@@ -134,7 +141,13 @@ def check_plan(plan: dict[str, Any], *, expected_resource_group: str | None = No
     for entry in plan.get("role_assignments", []) or []:
         name = str(entry.get("name", "<unnamed>"))
         scope = str(entry.get("scope", ""))
-        if scope in _FORBIDDEN_SCOPE_PREFIXES:
+        widens = (
+            scope in _FORBIDDEN_SCOPE_PREFIXES
+            or scope.strip().lower() in _FORBIDDEN_SCOPE_WORDS
+            or scope.startswith("/subscriptions")
+            or scope.startswith("/providers/Microsoft.Management")
+        )
+        if widens:
             report.fail("plan:role-assignment-scopes", name, f"scope {scope!r} is subscription- or tenant-wide")
         if not entry.get("role"):
             report.fail("plan:role-assignment-scopes", name, "no 'role' declared")

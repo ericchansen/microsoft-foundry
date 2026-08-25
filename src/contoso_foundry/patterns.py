@@ -152,7 +152,10 @@ IDENTIFIER_RULES: tuple[Rule, ...] = (
     ),
     Rule(
         "azure-resource-id",
-        re.compile(r"/subscriptions/[^/\s\"'<>)\]]+", re.I),
+        # Match the whole path, not just the subscription segment: redacting only
+        # `/subscriptions/<guid>` would leave the resource group and resource name
+        # in the clear, which is most of what an attacker wanted anyway.
+        re.compile(r"/subscriptions/[^\s\"'<>)\]]+", re.I),
         "an Azure resource ID or subscription-scoped path",
     ),
     Rule(

@@ -322,9 +322,27 @@ def evaluate(
     *,
     region: str,
     client: PriceClient,
-    budget_usd: float = DEFAULT_BUDGET_USD,
+    budget_usd: float | None = None,
 ) -> CostReport:
-    """Price every line item and report the total against the budget."""
+    """Price every line item and report the total against the budget.
+
+    The ceiling comes from the estimate itself unless a caller overrides it, so
+    the number a reviewer reads in `costs/v1-estimate.yaml` is the number that
+    is actually enforced.
+    """
+    if budget_usd is None:
+        budget_usd = float(estimate.get("monthly_budget_usd", DEFAULT_BUDGET_USD))
+
+    # The ceiling is denominated in the estimate's currency. Comparing a EUR
+    # total against a USD ceiling would understate the spend by roughly the
+    # exchange rate, so the mismatch is fatal rather than a warning.
+    declared_currency = str(estimate.get("currency", "USD")).upper()
+    if client.currency.upper() != declared_currency:
+        raise CostModelError(
+            f"estimate is denominated in {declared_currency} but prices were queried in "
+            f"{client.currency.upper()}. Refusing to compare a total to a ceiling in another currency."
+        )
+
     report = CostReport(
         generated_at=datetime.now(UTC).isoformat(timespec="seconds"),
         currency=client.currency,
@@ -505,6 +523,11 @@ def render_markdown(report: CostReport) -> str:
     return "\n".join(lines) + "\n"
 
 
-def budget_from_env(default: float = DEFAULT_BUDGET_USD) -> float:
+def budget_from_env(default: float | None = None) -> float | None:
+    """Read a budget override from the environment.
+
+    Returns ``None`` when unset so that `evaluate` falls back to the ceiling
+    declared in the estimate, rather than a constant that silently overrides it.
+    """
     raw = os.environ.get("FOUNDRY_MONTHLY_BUDGET_USD")
     return float(raw) if raw else default

@@ -21,10 +21,17 @@ TEXT_SUFFIXES = frozenset(
     {".html", ".htm", ".md", ".markdown", ".json", ".yml", ".yaml", ".txt", ".xml", ".py", ".toml", ".cfg", ".ini"}
 )
 
-#: Paths never scanned: vendored theme bundles emitted by MkDocs Material, VCS
-#: internals, and the quarantine directory itself.
+#: Paths never scanned: vendored theme bundles emitted by MkDocs Material and
+#: VCS/tooling internals.
+#:
+#: `internal` is deliberately NOT in this set. Excluding any directory component
+#: with that name would create a blind spot exactly where it hurts most: a stray
+#: `site/internal/leak.html` would be silently skipped by the CI scan of the
+#: generated site. The quarantine directory is kept out of the build by
+#: `check_internal_is_excluded` and out of git by `.gitignore`; the scanner's job
+#: is to read whatever it is pointed at, without exceptions.
 EXCLUDED_DIR_PARTS = frozenset(
-    {".git", "node_modules", "__pycache__", ".venv", "venv", ".ruff_cache", ".pytest_cache", "internal"}
+    {".git", "node_modules", "__pycache__", ".venv", "venv", ".ruff_cache", ".pytest_cache"}
 )
 EXCLUDED_PATH_FRAGMENTS = ("assets/javascripts/", "assets/stylesheets/", "assets/images/")
 
@@ -151,8 +158,13 @@ def check_internal_is_excluded(repo_root: Path) -> list[str]:
         problems.append(".gitignore does not exclude internal/")
 
     docs_dir = repo_root / "docs"
-    if docs_dir.exists() and (docs_dir / "internal").exists():
-        problems.append("docs/internal exists, so internal evidence would be published by MkDocs")
+    if docs_dir.exists():
+        # Nested as well as top-level: docs/platform/internal/ would be published
+        # just as readily as docs/internal/.
+        for nested in docs_dir.rglob("internal"):
+            if nested.is_dir():
+                rel = nested.relative_to(repo_root).as_posix()
+                problems.append(f"{rel} exists, so internal evidence would be published by MkDocs")
 
     mkdocs = repo_root / "mkdocs.yml"
     if mkdocs.exists():

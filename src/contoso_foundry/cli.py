@@ -174,7 +174,18 @@ def cmd_boundary(args: argparse.Namespace) -> int:
         return 1
 
     if args.create_resource_group:
-        location = args.region or os.environ.get("FOUNDRY_LOCATION")
+        # --no-live skips the live adoption check, which is precisely the check
+        # that proves the group does not already exist and belong to someone
+        # else. Creating on the strength of a static plan review alone would
+        # defeat the gate, so the combination is refused outright.
+        if args.no_live:
+            print(
+                "--create-resource-group cannot be combined with --no-live: creating requires "
+                "the live adoption check that --no-live skips.",
+                file=sys.stderr,
+            )
+            return 2
+        location = args.region or os.environ.get("FOUNDRY_LOCATION") or _selected_region(Path(args.config))
         if not location:
             print("--create-resource-group needs --region or FOUNDRY_LOCATION", file=sys.stderr)
             return 2
@@ -196,7 +207,11 @@ def cmd_scan(args: argparse.Namespace) -> int:
     for raw in args.path:
         root = Path(raw)
         if not root.exists():
-            print(f"skipping {root} (does not exist)", file=sys.stderr)
+            # A requested path that is missing is a failure, not a pass. Silently
+            # skipping it is how a renamed build directory turns into a green
+            # build that scanned nothing.
+            print(f"{root} does not exist, so it was not scanned", file=sys.stderr)
+            exit_code = 1
             continue
         result = scan_mod.scan_path(root, allowed_hosts=ALLOWED_HOSTS)
         print(f"{root}: scanned {result.scanned_files} file(s), {len(result.findings)} finding(s)")
