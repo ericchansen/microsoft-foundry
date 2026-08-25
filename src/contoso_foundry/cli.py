@@ -12,6 +12,8 @@ import os
 import sys
 from pathlib import Path
 
+import yaml
+
 from . import boundary as boundary_mod
 from . import costs as costs_mod
 from . import discovery as discovery_mod
@@ -57,6 +59,15 @@ def _write(path: Path, text: str) -> Path:
     return path
 
 
+def _selected_region(config_dir: Path) -> str | None:
+    """Read the committed region decision, if `foundry regions` has produced one."""
+    path = config_dir / "selected-region.yaml"
+    if not path.is_file():
+        return None
+    document = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return document.get("region")
+
+
 # --------------------------------------------------------------------------- #
 
 
@@ -88,6 +99,12 @@ def cmd_regions(args: argparse.Namespace) -> int:
     if args.publish:
         _write(Path(args.publish), regions_mod.render_public_markdown(selection))
 
+    # The decision itself is committed, so CI and later phases can consume it
+    # without Azure credentials. It stays derived: re-running this command
+    # rewrites the file, and a drifting answer shows up as a diff in review.
+    if selection.ranked:
+        _write(Path(args.config) / "selected-region.yaml", regions_mod.render_decision_yaml(selection))
+
     print(f"evaluated {len(selection.regions)} regions, {len(selection.ranked)} qualified")
     for i, r in enumerate(selection.ranked[: args.top], start=1):
         cost = f"${r.monthly_basket_usd:,.2f}" if r.monthly_basket_usd is not None else "unpriced"
@@ -103,7 +120,12 @@ def cmd_regions(args: argparse.Namespace) -> int:
 
 def cmd_costs(args: argparse.Namespace) -> int:
     estimate = costs_mod.load_estimate(Path(args.estimate))
-    region = args.region or os.environ.get("FOUNDRY_LOCATION") or estimate.get("default_region")
+    region = (
+        args.region
+        or os.environ.get("FOUNDRY_LOCATION")
+        or _selected_region(Path(args.config))
+        or estimate.get("default_region")
+    )
     if not region:
         print(
             "No region given. Pass --region, set FOUNDRY_LOCATION, or run `foundry regions` first.",

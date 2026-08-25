@@ -426,6 +426,46 @@ def render_internal_markdown(s: Selection) -> str:
     return "\n".join(lines) + "\n"
 
 
+def render_decision_yaml(s: Selection) -> str:
+    """The committed decision record.
+
+    This is the one place a region name is written to a tracked file, and it is
+    generated rather than typed. Committing it lets CI and later phases consume
+    the decision without Azure credentials, while re-running ``foundry regions``
+    turns any drift into a reviewable diff.
+    """
+    winner = s.winner
+    if winner is None:
+        raise ValueError("no region qualified, so there is no decision to record")
+
+    runners_up = [
+        {
+            "region": r.name,
+            "monthly_basket_usd": round(r.monthly_basket_usd, 2) if r.monthly_basket_usd is not None else None,
+            "distance_km": round(r.distance_km) if r.distance_km is not None else None,
+        }
+        for r in s.ranked[1:6]
+    ]
+    document = {
+        "region": winner.name,
+        "display_name": winner.display_name,
+        "geography": winner.geography,
+        "monthly_basket_usd": round(winner.monthly_basket_usd, 2) if winner.monthly_basket_usd is not None else None,
+        "distance_km": round(winner.distance_km) if winner.distance_km is not None else None,
+        "availability_zones": winner.availability_zones,
+        "evaluated": len(s.regions),
+        "qualified": len(s.ranked),
+        "runners_up": runners_up,
+        "generated_at": s.generated_at,
+        "generated_by": "foundry regions",
+        "note": (
+            "Generated file. Do not edit by hand: change config/region-requirements.yaml "
+            "or config/capability-matrix.yaml and re-run `foundry regions`."
+        ),
+    }
+    return yaml.safe_dump(document, sort_keys=False, default_flow_style=False)
+
+
 def render_public_markdown(s: Selection) -> str:
     """Sanitized summary: which regions qualified and why, no quota numbers."""
     winner = s.winner
