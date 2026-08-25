@@ -1,6 +1,7 @@
 version: 1
 agent_name: contoso-research
 agent_version: 1.0.0
+hosted_version: '1'
 protocol: responses
 protocol_version: 2.0.0
 persona_route: americas-supply-planner

@@ -43,6 +43,12 @@ changing the answer by a factor of a thousand.
 **An unpriceable component reserves budget.** A billable component with no
 published meter must declare a reserve. Recording it as zero is banned.
 
+The Contoso Research agent adds two live-priced Global Standard
+`gpt-5.4-mini` token meters. Its hosted sandbox is different: Microsoft
+documents active CPU-and-memory consumption billing, but the Retail Prices API
+does not expose a unique hosted-agent compute meter. The model therefore holds
+a **$30/month reserve** for 100 active session-hours at 0.5 vCPU and 1 GiB.
+
 ## Components with no published price
 
 [Azure SRE Agent](https://learn.microsoft.com/azure/sre-agent/pricing-billing)
@@ -54,6 +60,11 @@ Agent meter at all.
 The model therefore holds an explicit monthly reserve against the ceiling and
 reports it as a warning on every run. When a meter is published, the reserve is
 replaced with a real lookup.
+
+The same fail-safe applies to
+[hosted-agent compute](https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agents#pricing):
+its reserve is replaced only when one unambiguous Retail Prices API meter can be
+matched.
 
 ## Copilot Studio is not in the Azure budget
 

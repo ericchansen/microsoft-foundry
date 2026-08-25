@@ -31,6 +31,21 @@ time. Foundry uses [OpenTelemetry semantic conventions for generative
 AI](https://opentelemetry.io/docs/specs/semconv/gen-ai/) and stores the traces in
 [Application Insights](https://learn.microsoft.com/azure/foundry/observability/how-to/trace-agent-setup).
 
+## Contoso Research traces
+
+The Research hosted agent creates one
+[`AzureAIOpenTelemetryTracer`](https://learn.microsoft.com/azure/foundry/how-to/develop/langchain-traces)
+and attaches it to the compiled LangGraph. The tracer records planner,
+retrieval, and synthesis nodes with `gen_ai.agent.id=contoso-research`, while
+`OTEL_SERVICE_NAME=contoso-research` keeps the service dimension stable across
+container versions.
+
+Prompt and completion content recording is disabled in both the tracer and the
+container environment. Operational spans, node timing, failures, and standard
+generative-AI attributes still flow through the Research project's existing
+Application Insights connection. The hosted platform injects that connection;
+the repository contains no connection string.
+
 ## Identity and access
 
 Each project has its own system-assigned identity. The deployment grants every

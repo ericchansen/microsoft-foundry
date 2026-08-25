@@ -1,0 +1,11 @@
+.azure
+.git
+.github
+.pytest_cache
+.ruff_cache
+.venv
+internal
+reports
+site
+**/__pycache__
+**/*.pyc

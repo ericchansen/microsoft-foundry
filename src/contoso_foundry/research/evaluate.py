@@ -11,7 +11,7 @@ from langchain_core.messages import HumanMessage
 
 from .runtime import build_runtime
 from .synthesis import deterministic_synthesizer
-from .workflow import AGENT_VERSION, build_research_graph
+from .workflow import AGENT_NAME, AGENT_VERSION, HOSTED_VERSION, PROTOCOL_VERSION, build_research_graph
 
 
 class EvaluationError(RuntimeError):
@@ -20,9 +20,17 @@ class EvaluationError(RuntimeError):
 
 def run_evaluations(repo_root: Path, scenarios_path: Path) -> list[str]:
     document = yaml.safe_load(scenarios_path.read_text(encoding="utf-8"))
-    if document.get("agent_version") != AGENT_VERSION:
+    expected_route = {
+        "agent_name": AGENT_NAME,
+        "agent_version": AGENT_VERSION,
+        "hosted_version": HOSTED_VERSION,
+        "protocol": "responses",
+        "protocol_version": PROTOCOL_VERSION,
+    }
+    actual_route = {key: str(document.get(key, "")) for key in expected_route}
+    if actual_route != expected_route:
         raise EvaluationError(
-            f"evaluation routes version {document.get('agent_version')!r}; expected {AGENT_VERSION!r}"
+            f"evaluation routes {actual_route!r}; expected {expected_route!r}"
         )
 
     route = str(document.get("persona_route", ""))

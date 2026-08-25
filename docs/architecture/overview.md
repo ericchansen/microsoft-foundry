@@ -51,8 +51,16 @@ Specialist agents run on the
 [Foundry Agent Service](https://learn.microsoft.com/azure/foundry/agents/overview),
 which is generally available and supplies threads, tool calling and evaluation.
 
-Using the managed service rather than a hand-rolled orchestration loop means
-there is no per-agent-hour runtime charge and no bespoke state store to operate.
+The Contoso Research specialist uses a hosted LangGraph container. Hosted-agent
+compute is billed for CPU and memory consumed by active sessions, so the cost
+model prices model tokens and holds an explicit compute reserve. The platform
+manages the Responses conversation lifecycle and session sandbox rather than
+requiring a bespoke public API or state service.
+
+!!! warning "Public preview"
+    Hosted agents and their unified `azure.yaml` deployment surface are in public
+    preview. This implementation is production-representative, not a claim that
+    the preview carries a production SLA.
 
 ### Autonomous work — Logic Apps agent loops
 

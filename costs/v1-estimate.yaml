@@ -158,6 +158,50 @@ line_items:
       tiered and the included free allocation is priced at zero, which the
       graduated tier maths applies automatically.
 
+  - id: contoso-research-input
+    component: Contoso Research gpt-5.4-mini input tokens
+    billing: azure
+    quantity: 10000000
+    unit: tokens
+    expect_unit_of_measure: 1M
+    meter:
+      serviceName: Foundry Models
+      skuName: 5.4 mini Inp Gl
+      meterName: 5.4 mini Inp Gl 1M Tokens
+    source: https://azure.microsoft.com/pricing/details/foundry-models/
+    notes: >-
+      10 million uncached input tokens/month on the exact Global Standard
+      gpt-5.4-mini 2026-03-17 deployment declared in azure.yaml.
+
+  - id: contoso-research-output
+    component: Contoso Research gpt-5.4-mini output tokens
+    billing: azure
+    quantity: 2000000
+    unit: tokens
+    expect_unit_of_measure: 1M
+    meter:
+      serviceName: Foundry Models
+      skuName: 5.4 mini Opt Gl
+      meterName: 5.4 mini Opt Gl 1M Tokens
+    source: https://azure.microsoft.com/pricing/details/foundry-models/
+    notes: >-
+      2 million output tokens/month on the exact Global Standard gpt-5.4-mini
+      2026-03-17 deployment declared in azure.yaml.
+
+  - id: contoso-research-hosted-compute
+    component: Contoso Research hosted-agent compute
+    billing: azure
+    pricing_status: unpublished
+    budget_reserve_usd: 30
+    quantity: 100
+    unit: active-session-hours
+    source: https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agents#pricing
+    notes: >-
+      PUBLIC PREVIEW. The agent is sized at 0.5 vCPU and 1 GiB with an assumed
+      100 active session-hours/month. Microsoft documents CPU-plus-memory
+      consumption billing, but the Retail Prices API does not expose a unique
+      hosted-agent compute meter, so the gate reserves 30 USD instead of zero.
+
   - id: sre-agent
     component: Azure SRE Agent
     billing: azure

@@ -15,11 +15,29 @@ relying on one.
 | Agent Service overview | <https://learn.microsoft.com/azure/foundry/agents/overview> |
 | Agent Service limits, quotas and regions | <https://learn.microsoft.com/azure/foundry/agents/concepts/limits-quotas-regions> |
 | Model quotas and limits | <https://learn.microsoft.com/azure/foundry/openai/quotas-limits> |
+| Hosted agents | <https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agents> |
+| Unified `azure.yaml` reference | <https://learn.microsoft.com/azure/foundry/agents/concepts/azure-yaml-reference> |
+| Hosted-agent deployment | <https://learn.microsoft.com/azure/foundry/agents/how-to/deploy-hosted-agent> |
+| Hosted runtime contract | <https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agent-contract> |
+| Hosted-agent permissions | <https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agent-permissions> |
+| Private ACR deployment | <https://learn.microsoft.com/azure/foundry/agents/how-to/deploy-hosted-agent-private-azure-container-registry> |
+| LangGraph tracing | <https://learn.microsoft.com/azure/foundry/how-to/develop/langchain-traces> |
+| Foundry Models pricing | <https://azure.microsoft.com/pricing/details/foundry-models/> |
 
 Model quota is **subscription-level**, and Global Standard deployments draw from
 a single pool shared across regions. A region can therefore pass a model
 availability check and still have no usable headroom, which is why availability
 and quota are separate gates.
+
+Hosted agents use a unified `azure.yaml`, and the Responses protocol supplies
+conversation lifecycle, streaming, cancellation, and health handling. Each
+deployed agent receives its own identity; downstream roles are assigned only
+after that identity exists and only at the resource it must access.
+
+!!! warning "Public preview"
+    Hosted agents and parts of the unified deployment configuration are public
+    preview. Managed hosting is billed by CPU and memory consumed across active
+    sessions.
 
 ## API Management
 

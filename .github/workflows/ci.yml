@@ -15,6 +15,7 @@ concurrency:
 
 env:
   PYTHON_VERSION: "3.13"
+  PYTHONPATH: src
 
 jobs:
   # Everything that needs no network beyond PyPI. Fast, and the signal most PRs need.
@@ -31,7 +32,7 @@ jobs:
           cache: pip
 
       - name: Install
-        run: pip install -e ".[dev,docs]"
+        run: pip install -e ".[dev,docs,research]"
 
       - name: Ruff
         run: ruff check .
@@ -39,11 +40,24 @@ jobs:
       - name: Unit tests
         run: pytest -q
 
+      - name: Research golden evaluations
+        run: python -m contoso_foundry.research.evaluate
+
       # Static half of the ownership boundary: proves the *plan* never names a
       # scope outside rg-contoso-agents. --no-live skips the Azure lookups, which
       # need credentials CI does not have.
       - name: Ownership boundary (plan)
         run: foundry boundary --no-live
+
+  container:
+    name: research container build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build hosted-agent image
+        run: docker build --tag contoso-research:ci .
 
   # The published site is the thing a stranger sees, so its gates run on their own.
   site:
