@@ -22,11 +22,16 @@ would also allow arbitrary OpenAI families and defeat the narrow allow-list.
 Every family asset ID ends in `/` so prefix matching cannot accidentally approve
 similarly named models.
 
-The safe violation probe is
-`infra/validation/unapproved-model.bicep`. Run it only as an Azure what-if first.
-After policy propagation, a protected manual CI operation may attempt the
-synthetic deployment and must observe `RequestDisallowedByPolicy`. The template
-does not reference a real model and never alters an approved deployment.
+These GA built-ins govern deployment through the Foundry portal. Microsoft
+documents that scope as the portal **Deploy** experience. A live, valid
+unapproved-model probe through the ARM `accounts/deployments` API was not denied,
+so this repository does not claim the built-ins protect direct ARM callers. The
+probe deployment was removed immediately.
+
+Closing that API-channel gap would require a custom policy definition at
+subscription scope. The project boundary forbids creating or changing mutable
+subscription-level policy definitions, so comprehensive ARM enforcement remains
+an explicit limitation rather than a hidden manual claim.
 
 ## Content guardrail baseline
 
@@ -60,6 +65,8 @@ a separately owned Content Safety backend; this branch does not create one.
   enforcement is already active.
 - Model cards remain visible; policy blocks deployment rather than hiding catalog
   entries.
+- The built-ins do not provide a verified deny boundary for direct ARM model
+  deployment in this subscription.
 - The experimental `gpt-5.6-*` entries remain blocked if their lifecycle is
   preview, even though their families are explicitly listed.
 

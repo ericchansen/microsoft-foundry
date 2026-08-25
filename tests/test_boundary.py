@@ -164,16 +164,14 @@ class TestExistingGroupOwnership:
 
     @staticmethod
     def _patch_live(monkeypatch, *, tags, resources):
-        monkeypatch.setattr(
-            boundary.azure_cli,
-            "run",
-            lambda _args: [{"name": RG, "tags": tags}],
-        )
-        monkeypatch.setattr(
-            boundary.azure_cli,
-            "try_run",
-            lambda _args, **_kwargs: resources,
-        )
+        def fake_run(args):
+            if args[:2] == ["group", "list"]:
+                return [{"name": RG, "tags": tags}]
+            if args[:2] == ["resource", "list"]:
+                return resources
+            raise AssertionError(f"unexpected Azure CLI call: {args}")
+
+        monkeypatch.setattr(boundary.azure_cli, "run", fake_run)
 
     def owned_plan(self):
         return plan(
@@ -214,3 +212,25 @@ class TestExistingGroupOwnership:
         self._patch_live(monkeypatch, tags=self.OWNERSHIP_TAGS, resources=resources)
         report = boundary.check_live(boundary.check_plan(self.owned_plan()), self.owned_plan())
         assert "live:declared-resource-inventory" in failed_checks(report)
+
+    def test_rejects_failed_subscription_inventory(self, monkeypatch):
+        def fail(_args):
+            raise boundary.azure_cli.AzureCliError("authentication failed")
+
+        monkeypatch.setattr(boundary.azure_cli, "run", fail)
+        report = boundary.check_live(boundary.check_plan(self.owned_plan()), self.owned_plan())
+
+        assert not report.ok
+        assert "live:subscription-inventory" in failed_checks(report)
+
+    def test_rejects_failed_resource_inventory(self, monkeypatch):
+        def fake_run(args):
+            if args[:2] == ["group", "list"]:
+                return [{"name": RG, "tags": self.OWNERSHIP_TAGS}]
+            raise boundary.azure_cli.AzureCliError("resource inventory unavailable")
+
+        monkeypatch.setattr(boundary.azure_cli, "run", fake_run)
+        report = boundary.check_live(boundary.check_plan(self.owned_plan()), self.owned_plan())
+
+        assert not report.ok
+        assert "live:resource-inventory" in failed_checks(report)

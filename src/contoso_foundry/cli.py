@@ -239,19 +239,35 @@ def cmd_gateway(args: argparse.Namespace) -> int:
         for path in paths:
             print(f"wrote {path}")
         return 0
+    if args.gateway_command == "attest-model-deployments":
+        verified = gateway_mod.attest_model_deployment_input(
+            args.resource_group,
+            args.resource_prefix,
+            config,
+            args.model_deployments_json,
+        )
+        print(f"attested existing deployments: {', '.join(verified) or '<none>'}")
+        return 0
 
     status = gateway_mod.collect_status(args.resource_group, args.resource_prefix, config)
     path = _write(Path(args.internal) / "gateway-verification.json", gateway_mod.status_to_json(status))
     print(f"APIM: {status.apim_sku} in {status.apim_location} ({status.apim_state})")
     print(f"managed identity: {status.managed_identity}")
-    print(f"resource-specific gateway logs: {status.resource_specific_logs}")
+    print(
+        "resource-specific gateway logs: "
+        f"{status.resource_specific_logs} ({status.diagnostic_workspace_name})"
+    )
+    print(f"shared default connection: {status.shared_default_connection}")
     print(f"enrolled projects: {', '.join(status.enrolled_projects)}")
+    print(f"verified connections: {', '.join(status.verified_connections)}")
+    print(f"selectable deployments: {', '.join(status.verified_model_deployments)}")
     print(f"token policies: {', '.join(status.token_policy_projects)}")
+    print(f"API policies: {', '.join(status.api_policy_routes)}")
     print(f"model policy assignments: {len(status.policy_assignments)}")
     print(
         "guardrail policy: "
         f"{status.guardrail_policy_name} "
-        f"({status.guardrail_policy_mode}, {status.guardrail_filter_count} filters)"
+        f"({status.guardrail_policy_mode}, filters valid: {status.guardrail_filters_valid})"
     )
     print(f"evidence: {path}")
     return 0 if status.ok else 1
@@ -454,6 +470,15 @@ def build_parser() -> argparse.ArgumentParser:
     gateway_render = gateway_sub.add_parser("render-policies", help="render project token policy fragments")
     gateway_render.add_argument("--output", default=str(DEFAULT_REPORTS / "gateway-policies"))
     gateway_render.set_defaults(func=cmd_gateway)
+
+    gateway_attest = gateway_sub.add_parser(
+        "attest-model-deployments",
+        help="require deployment input to match the expected and live Foundry catalogs",
+    )
+    gateway_attest.add_argument("--resource-group", default="rg-contoso-agents")
+    gateway_attest.add_argument("--resource-prefix", default="contoso-agents")
+    gateway_attest.add_argument("--model-deployments-json", required=True)
+    gateway_attest.set_defaults(func=cmd_gateway)
 
     p = sub.add_parser("toolbox", help="validate the tool contracts and smoke-test them against the data spine")
     p.add_argument(

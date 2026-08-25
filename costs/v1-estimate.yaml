@@ -55,6 +55,22 @@ line_items:
       sits inside the zero band, so this line is expected to be $0 — the tier is
       still priced live rather than assumed.
 
+  - id: platform-acr-basic
+    component: Shared platform Container Registry Basic
+    billing: azure
+    quantity: 30
+    unit: days
+    expect_unit_of_measure: 1/Day
+    meter:
+      serviceName: Container Registry
+      skuName: Basic
+      meterName: Basic Registry Unit
+    source: https://azure.microsoft.com/pricing/details/container-registry/
+    notes: >-
+      One project-owned Basic registry for the shared estate/platform layer,
+      billed continuously for a 30-day month. This fixed cost is owned once by
+      the gateway/platform estimate rather than duplicated by consuming agents.
+
   - id: aca-vcpu
     component: Container Apps vCPU (active)
     billing: azure

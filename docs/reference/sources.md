@@ -29,6 +29,7 @@ and quota are separate gates.
 | v2 tier region availability | <https://learn.microsoft.com/azure/api-management/api-management-region-availability> |
 | Key concepts | <https://learn.microsoft.com/azure/api-management/api-management-key-concepts> |
 | Configure AI Gateway in Foundry | <https://learn.microsoft.com/azure/foundry/configuration/enable-ai-api-management-gateway-portal> |
+| AI Gateway static model discovery | <https://github.com/Azure-Samples/AI-Gateway/tree/main/labs/model-routing-factory> |
 | API Management monitoring | <https://learn.microsoft.com/azure/api-management/api-management-howto-use-azure-monitor> |
 | Gateway log schema | <https://learn.microsoft.com/azure/azure-monitor/reference/tables/apimanagementgatewaylogs> |
 | LLM token limits | <https://learn.microsoft.com/azure/api-management/llm-token-limit-policy> |

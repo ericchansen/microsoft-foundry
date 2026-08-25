@@ -22,7 +22,6 @@ def infra(repo_root: Path) -> dict[str, str]:
         "governance": repo_root / "infra" / "modules" / "model-governance.bicep",
         "association_entrypoint": repo_root / "infra" / "gateway-association.bicep",
         "governance_entrypoint": repo_root / "infra" / "model-governance.bicep",
-        "deny_probe": repo_root / "infra" / "validation" / "unapproved-model.bicep",
         "custom_agent": repo_root / "infra" / "policies" / "custom-agent.xml",
         "identity": repo_root / "infra" / "modules" / "identity.bicep",
         "data": repo_root / "infra" / "modules" / "secure-data.bicep",
@@ -99,11 +98,30 @@ def test_each_project_has_an_explicit_gateway_route_and_connection(infra):
     assert "name: 'foundry-${projectName}'" in infra["association"]
     assert "name: 'ai-gateway-${projectName}'" in infra["association"]
     assert "category: 'ApiManagement'" in infra["association"]
-    assert "authHeaderName: 'Ocp-Apim-Subscription-Key'" in infra["association"]
+    assert "name: 'Ocp-Apim-Subscription-Key'" in infra["association"]
+    assert "authConfig: string(connectionAuthConfig)" in infra["association"]
+    assert "models: string(connectionModels)" in infra["association"]
+    assert "models: '[]'" not in infra["association"]
     assert "projectSubscriptions[index].listSecrets().primaryKey" in infra["association"]
+    assert "Microsoft.CognitiveServices/accounts/connections@2026-05-01" in infra["association"]
+    assert "name: 'ai-gateway-default'" in infra["association"]
+    project_connections = infra["association"].split(
+        "resource projectGatewayConnections",
+        maxsplit=1,
+    )[1].split("resource defaultGatewayConnection", maxsplit=1)[0]
+    default_connection = infra["association"].split(
+        "resource defaultGatewayConnection",
+        maxsplit=1,
+    )[1]
+    assert "isSharedToAll: false" in project_connections
+    assert "isSharedToAll: true" in default_connection
+    assert "defaultProjectTokenLimits: gatewayConfig.default_project" in infra["association_entrypoint"]
+    assert "param existingModelDeployments array = []" in infra["association_entrypoint"]
+    assert "modelDeployments: existingModelDeployments" in infra["association_entrypoint"]
+    assert "modelDeployments: existingModelDeployments" in infra["main"]
+    assert "gatewayConfig.expected_model_deployments" not in infra["association_entrypoint"]
+    assert "gatewayConfig.expected_model_deployments" not in infra["main"]
     assert "gatewayConfig.projects" in infra["association_entrypoint"]
-
-
 def test_gateway_backend_uses_managed_identity(infra):
     assert "authentication-managed-identity" in infra["association"]
     assert "https://cognitiveservices.azure.com" in infra["association"]
@@ -138,11 +156,6 @@ def test_guardrail_policy_uses_stable_api_and_requires_deployment_attachment(inf
     guardrail_output = "output guardrailPolicyName string = governance.outputs.guardrailPolicyName"
     assert guardrail_output in infra["governance_entrypoint"]
     assert "raiPolicyName" not in infra["association"]
-
-
-def test_unapproved_model_probe_is_what_if_only_contract(infra):
-    assert "unapproved-policy-probe" in infra["deny_probe"]
-    assert "Microsoft.CognitiveServices/accounts/deployments@2025-06-01" in infra["deny_probe"]
 
 
 def test_custom_agent_template_keeps_backend_auth_at_gateway(infra):

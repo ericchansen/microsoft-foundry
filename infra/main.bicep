@@ -30,6 +30,9 @@ param budgetContactEmails array
 @minValue(1)
 param monthlyBudgetUsd int = 500
 
+@description('Existing model deployments supplied explicitly by the model-owning dependency stack.')
+param existingModelDeployments array = []
+
 @description('Budget period start. Kept dynamic so deployments do not expire.')
 param budgetStartDate string = utcNow('yyyy-MM-01')
 
@@ -146,6 +149,8 @@ module gatewayAssociation 'modules/gateway-association.bicep' = {
     foundryAccountName: foundryAccount.name
     projectNames: projectNames
     projectTokenLimits: gatewayConfig.projects
+    defaultProjectTokenLimits: gatewayConfig.default_project
+    modelDeployments: existingModelDeployments
   }
   dependsOn: [
     foundryProjects
@@ -271,3 +276,4 @@ output approvedModelsAssignmentName string = modelGovernance.outputs.approvedMod
 output modelEligibilityAssignmentName string = modelGovernance.outputs.modelEligibilityAssignmentName
 output guardrailPolicyName string = modelGovernance.outputs.guardrailPolicyName
 output gatewayEnrolledProjects array = gatewayAssociation.outputs.enrolledProjects
+output gatewaySharedDefaultConnectionName string = gatewayAssociation.outputs.sharedDefaultConnectionName

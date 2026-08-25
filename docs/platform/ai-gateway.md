@@ -45,6 +45,25 @@ passed between Azure resources only during deployment; it is never an output or
 repository value. Reapplying `infra/gateway-association.bicep` reconciles the
 same resources, so enrollment is idempotent.
 
+Each connection can publish static `models` metadata supplied through the
+`existingModelDeployments` deployment parameter. That input is an explicit
+contract with the model-owning dependency stack: the gateway branch creates no
+model deployments, and both root templates default to an empty array so a clean
+deployment cannot advertise models that do not exist. The protected workflow
+requires the operator to provide the JSON array for an environment that already
+has deployments. Before what-if or deployment, it requires that input to match
+the tracked expectation and the complete live deployment inventory, including
+name, model, version, format, successful provisioning state, and responsible AI
+policy attachment.
+
+`expected_model_deployments` in `config/gateway.yaml` is used only for
+fail-closed live verification. The verifier compares connection metadata with
+the account's deployment names, model families, versions, formats, and
+responsible AI policy attachments. Adding or replacing a deployment requires
+updating that expected catalog and explicitly passing the matching deployment
+input; an absent or stale deployment fails verification rather than producing a
+false success.
+
 | Project | Tokens/minute | Monthly token quota |
 | --- | ---: | ---: |
 | Travel | 20,000 | 2,000,000 |
@@ -58,9 +77,10 @@ or Bicep. The `llm-token-limit` policy returns **429 Too Many Requests** for a
 TPM overrun and **403 Forbidden** for a total-quota overrun.
 
 New projects must be added to the same configuration before they receive an
-independent route and counter. Existing gateway connections are discoverable
-through the Foundry account, but sharing a connection is not a substitute for a
-project-specific limit.
+independent route and counter. Until then, an account-level
+`ai-gateway-default` connection is shared to every project and routes through a
+conservative 2,000 TPM / 100,000 monthly-token policy. Existing named projects
+keep their explicit routes and independent counters.
 
 ## Custom-agent readiness
 
@@ -106,26 +126,30 @@ the project resource group. The diagnostic destination is the shared,
 project-owned workspace from the [telemetry spine](telemetry-spine.md). No
 subscription-wide identity or role assignment is created.
 
-## Current validation limits
+## Live validation
 
-The gateway control plane, diagnostic destination, project enrollments, and
-stored limit policies can be verified without a model deployment:
+After Azure login, the verifier checks the complete gateway control-plane
+contract: APIM SKU and region, managed identity, diagnostic workspace and
+resource-specific schema, connection targets and model metadata, token-fragment
+XML and limits, every API's fragment/backend/managed-identity/forwarding policy,
+the exact APIM API inventory, policy definitions and enforcement, live model
+attachments, and every responsible AI filter. No API is exempted by a familiar
+name or display label; a stock Echo API must be removed or governed explicitly:
 
 ```bash
 foundry gateway verify
 ```
 
-The Travel model was not present when this layer was deployed. Therefore live
-429 and 403 responses are a **post-Travel acceptance gate**, not a claimed
-result. After Travel attaches `contoso-agents-guardrails` to its model deployment
-and publishes `gpt-5.4-mini`, send low-cost requests through the Travel APIM URL,
-first exceeding TPM and then total quota, and retain the 429/403 responses under
-`internal/`. Direct calls to the Foundry backend must not be used as gateway
-evidence.
+When an approved model is available, validate both limits through temporary,
+independently keyed APIM routes: a TPM overrun must return 429 and a total-token
+quota overrun must return 403. Query `ApiManagementGatewayLogs` for both records,
+then remove the temporary APIs and subscriptions. Direct calls to the Foundry
+backend are not gateway evidence.
 
 ## Sources
 
 - [Configure AI Gateway in Microsoft Foundry](https://learn.microsoft.com/azure/foundry/configuration/enable-ai-api-management-gateway-portal)
+- [AI Gateway model-discovery sample](https://github.com/Azure-Samples/AI-Gateway/tree/main/labs/model-routing-factory)
 - [API Management v2 tiers](https://learn.microsoft.com/azure/api-management/v2-service-tiers-overview)
 - [Monitor API Management](https://learn.microsoft.com/azure/api-management/api-management-howto-use-azure-monitor)
 - [`ApiManagementGatewayLogs` schema](https://learn.microsoft.com/azure/azure-monitor/reference/tables/apimanagementgatewaylogs)

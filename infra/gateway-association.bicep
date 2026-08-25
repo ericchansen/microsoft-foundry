@@ -11,6 +11,9 @@ param projectNames array = [
   'platform'
 ]
 
+@description('Existing model deployments supplied explicitly by the model-owning dependency stack.')
+param existingModelDeployments array = []
+
 var gatewayConfig = loadYamlContent('../config/gateway.yaml')
 
 module association 'modules/gateway-association.bicep' = {
@@ -20,7 +23,10 @@ module association 'modules/gateway-association.bicep' = {
     foundryAccountName: '${resourcePrefix}-foundry'
     projectNames: projectNames
     projectTokenLimits: gatewayConfig.projects
+    defaultProjectTokenLimits: gatewayConfig.default_project
+    modelDeployments: existingModelDeployments
   }
 }
 
 output enrolledProjects array = association.outputs.enrolledProjects
+output sharedDefaultConnectionName string = association.outputs.sharedDefaultConnectionName

@@ -193,7 +193,12 @@ def check_live(report: BoundaryReport, plan: dict[str, Any]) -> BoundaryReport:
     try:
         groups = azure_cli.run(["group", "list"]) or []
     except azure_cli.AzureCliError as exc:
-        report.checks_run.append(f"live:skipped ({exc})")
+        report.checks_run.append("live:subscription-inventory")
+        report.fail(
+            "live:subscription-inventory",
+            report.resource_group,
+            f"could not inspect the live subscription: {exc}",
+        )
         return report
 
     report.live = True
@@ -219,7 +224,16 @@ def check_live(report: BoundaryReport, plan: dict[str, Any]) -> BoundaryReport:
                 f"ownership tags do not match the plan: {mismatched_tags}",
             )
 
-        resources = azure_cli.try_run(["resource", "list", "-g", report.resource_group], default=[]) or []
+        try:
+            resources = azure_cli.run(["resource", "list", "-g", report.resource_group]) or []
+        except azure_cli.AzureCliError as exc:
+            report.checks_run.append("live:resource-inventory")
+            report.fail(
+                "live:resource-inventory",
+                report.resource_group,
+                f"could not inspect the live resource inventory: {exc}",
+            )
+            return report
         if not plan.get("allow_existing_resource_group", False):
             report.fail(
                 "live:target-not-adopted",
