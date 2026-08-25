@@ -271,3 +271,57 @@ class TestShippedEstimate:
     def test_line_item_ids_are_unique(self, estimate):
         ids = [i["id"] for i in estimate["line_items"]]
         assert len(ids) == len(set(ids))
+
+
+class _AlwaysThrottled:
+    """A session that never stops returning 429, like a sustained rate limit."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def get(self, url: str, timeout: float | None = None) -> Any:  # noqa: ARG002
+        self.calls += 1
+
+        class _Response:
+            status_code = 429
+            headers: dict[str, str] = {}
+
+        return _Response()
+
+
+class TestRetryExhaustion:
+    """The budget gate must fail loudly when pricing is unavailable.
+
+    A hang is worse than a failure here: CI reads it as flakiness, and the
+    ceiling silently stops being enforced for that run.
+    """
+
+    def test_gives_up_and_raises_rather_than_retrying_forever(self):
+        session = _AlwaysThrottled()
+        client = costs.PriceClient(
+            session=session,
+            max_retries=3,
+            backoff_seconds=0.0,
+            request_timeout=0.1,
+            deadline_seconds=5.0,
+        )
+
+        with pytest.raises(costs.CostModelError, match="did not respond successfully"):
+            client.query("serviceName eq 'API Management'")
+
+        assert session.calls == 3
+
+    def test_a_deadline_stops_retrying_before_the_attempt_budget(self):
+        session = _AlwaysThrottled()
+        client = costs.PriceClient(
+            session=session,
+            max_retries=100,
+            backoff_seconds=0.0,
+            request_timeout=0.1,
+            deadline_seconds=0.0,
+        )
+
+        with pytest.raises(costs.CostModelError):
+            client.query("serviceName eq 'API Management'")
+
+        assert session.calls == 0

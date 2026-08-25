@@ -97,12 +97,16 @@ class PriceClient:
         session: requests.Session | None = None,
         max_retries: int = 6,
         backoff_seconds: float = 1.5,
+        request_timeout: float = 20.0,
+        deadline_seconds: float = 120.0,
     ) -> None:
         self.currency = currency
         self.cache_path = cache_path
         self.offline = offline
         self.max_retries = max_retries
         self.backoff_seconds = backoff_seconds
+        self.request_timeout = request_timeout
+        self.deadline_seconds = deadline_seconds
         self._session = session or requests.Session()
         self._cache: dict[str, list[dict[str, Any]]] = {}
         if cache_path and cache_path.exists():
@@ -133,16 +137,29 @@ class PriceClient:
         return items
 
     def _get(self, url: str) -> dict[str, Any]:
-        """GET with backoff.
+        """GET with bounded backoff.
 
         The Retail Prices API is unauthenticated and rate limited, and a full
         cost run issues one request per line item. A 429 is an expected part of
         normal operation, not an error, so it is retried rather than surfaced.
+
+        Retries are bounded by a wall-clock deadline as well as an attempt count.
+        Without it, a sustained throttle multiplies per-request timeouts by
+        retries by line items, and the budget gate stops being a gate: it hangs
+        until the CI runner kills it, which reads as infrastructure flakiness
+        rather than the clear failure it is.
         """
         last_error: Exception | None = None
+        started = time.monotonic()
+
+        def remaining() -> float:
+            return self.deadline_seconds - (time.monotonic() - started)
+
         for attempt in range(self.max_retries):
+            if remaining() <= 0:
+                break
             try:
-                response = self._session.get(url, timeout=60)
+                response = self._session.get(url, timeout=min(self.request_timeout, max(remaining(), 1.0)))
             except requests.RequestException as exc:  # transient network fault
                 last_error = exc
             else:
@@ -152,12 +169,17 @@ class PriceClient:
                 last_error = CostModelError(f"HTTP {response.status_code} from the Retail Prices API")
                 retry_after = response.headers.get("Retry-After")
                 if retry_after and retry_after.isdigit():
-                    time.sleep(min(float(retry_after), 60.0))
+                    delay = min(float(retry_after), 60.0, max(remaining(), 0.0))
+                    if delay > 0:
+                        time.sleep(delay)
                     continue
-            time.sleep(min(self.backoff_seconds * (2**attempt), 30.0))
+            delay = min(self.backoff_seconds * (2**attempt), 30.0, max(remaining(), 0.0))
+            if delay > 0:
+                time.sleep(delay)
 
         raise CostModelError(
-            f"the Azure Retail Prices API did not respond successfully after {self.max_retries} attempts: {last_error}"
+            f"the Azure Retail Prices API did not respond successfully within "
+            f"{self.deadline_seconds:.0f}s / {self.max_retries} attempts: {last_error}"
         )
 
     def save_cache(self) -> None:

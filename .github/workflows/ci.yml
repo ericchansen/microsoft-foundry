@@ -21,6 +21,7 @@ jobs:
   static:
     name: lint and unit tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
 
@@ -48,6 +49,7 @@ jobs:
   site:
     name: docs build and public-content scan
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
 
@@ -76,6 +78,7 @@ jobs:
   cost:
     name: cost model under budget
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
 
