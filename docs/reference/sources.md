@@ -28,6 +28,9 @@ and quota are separate gates.
 | v2 tiers overview | <https://learn.microsoft.com/azure/api-management/v2-service-tiers-overview> |
 | v2 tier region availability | <https://learn.microsoft.com/azure/api-management/api-management-region-availability> |
 | Key concepts | <https://learn.microsoft.com/azure/api-management/api-management-key-concepts> |
+| Configure AI Gateway in Foundry | <https://learn.microsoft.com/azure/foundry/configuration/enable-ai-api-management-gateway-portal> |
+| API Management monitoring | <https://learn.microsoft.com/azure/api-management/api-management-howto-use-azure-monitor> |
+| Gateway log schema | <https://learn.microsoft.com/azure/azure-monitor/reference/tables/apimanagementgatewaylogs> |
 
 The v2 tiers are available in a **narrower** set of regions than API Management
 itself. The region availability page is the authority, not the resource

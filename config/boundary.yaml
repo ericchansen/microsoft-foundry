@@ -69,6 +69,14 @@ resources:
   - name: monthly-budget
     kind: Microsoft.Consumption/budgets
     scope: providers/Microsoft.Consumption/budgets/contoso-agents-monthly
+  - name: ai-gateway
+    kind: Microsoft.ApiManagement/service
+    scope: providers/Microsoft.ApiManagement/service/contoso-agents-gateway
+
+diagnostic_settings:
+  - name: ai-gateway-logs
+    kind: Microsoft.Insights/diagnosticSettings
+    scope: providers/Microsoft.ApiManagement/service/contoso-agents-gateway/providers/Microsoft.Insights/diagnosticSettings/contoso-agents-gateway-logs
 
 # Identities. All are created inside the boundary. Reusing any pre-existing
 # identity is rejected by the `plan:no-reuse` check.

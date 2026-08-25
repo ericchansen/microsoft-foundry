@@ -17,6 +17,7 @@ def infra(repo_root: Path) -> dict[str, str]:
         "main": repo_root / "infra" / "main.bicep",
         "params": repo_root / "infra" / "main.bicepparam",
         "monitoring": repo_root / "infra" / "modules" / "monitoring.bicep",
+        "gateway": repo_root / "infra" / "modules" / "gateway.bicep",
         "identity": repo_root / "infra" / "modules" / "identity.bicep",
         "data": repo_root / "infra" / "modules" / "secure-data.bicep",
     }
@@ -63,6 +64,28 @@ def test_projects_can_read_shared_telemetry(infra):
 def test_monitoring_retention_is_at_least_ninety_days(infra):
     assert "@minValue(90)" in infra["monitoring"]
     assert "retentionInDays: 90" in infra["main"]
+
+
+def test_gateway_uses_basic_v2_in_selected_region(infra):
+    assert "Microsoft.ApiManagement/service@2024-05-01" in infra["gateway"]
+    assert "name: 'BasicV2'" in infra["gateway"]
+    assert "capacity: 1" in infra["gateway"]
+    assert "location: location" in infra["gateway"]
+    assert "location: location" in infra["main"]
+
+
+def test_gateway_has_owned_identity_and_no_secret(infra):
+    assert "type: 'SystemAssigned'" in infra["gateway"]
+    assert "publisherEmail: budgetContactEmails[0]" in infra["main"]
+    assert "password" not in infra["gateway"].lower()
+    assert "secret" not in infra["gateway"].lower()
+
+
+def test_gateway_logs_use_resource_specific_schema(infra):
+    assert "Microsoft.Insights/diagnosticSettings@2021-05-01-preview" in infra["gateway"]
+    assert "logAnalyticsDestinationType: 'Dedicated'" in infra["gateway"]
+    assert "category: 'GatewayLogs'" in infra["gateway"]
+    assert "logAnalyticsWorkspaceResourceId: monitoring.outputs.logAnalyticsWorkspaceResourceId" in infra["main"]
 
 
 def test_app_insights_local_auth_exception_is_explicit(infra):

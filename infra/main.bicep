@@ -55,6 +55,17 @@ module monitoring 'modules/monitoring.bicep' = {
   }
 }
 
+module gateway 'modules/gateway.bicep' = {
+  name: 'gateway'
+  params: {
+    location: location
+    resourcePrefix: resourcePrefix
+    publisherEmail: budgetContactEmails[0]
+    logAnalyticsWorkspaceResourceId: monitoring.outputs.logAnalyticsWorkspaceResourceId
+    tags: tags
+  }
+}
+
 module secureData 'modules/secure-data.bicep' = {
   name: 'secure-data'
   params: {
@@ -226,3 +237,5 @@ output containerRegistryName string = secureData.outputs.containerRegistryName
 output deployIdentityName string = identities.outputs.deployIdentityName
 output deployIdentityClientId string = identities.outputs.deployIdentityClientId
 output runtimeIdentityName string = identities.outputs.runtimeIdentityName
+output gatewayName string = gateway.outputs.gatewayName
+output gatewayResourceId string = gateway.outputs.gatewayResourceId
