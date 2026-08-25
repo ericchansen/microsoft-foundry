@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "contoso-foundry"
 version = "0.1.0"
-description = "Verification tooling for the Contoso agent platform demo on Azure AI Foundry"
+description = "Verification tooling for the Contoso agent platform demo on Microsoft Foundry"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }

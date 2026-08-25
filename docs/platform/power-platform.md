@@ -10,11 +10,37 @@ of it is inside the resource group boundary.**
 
     The tenant currently has **zero Power Platform environments**. Creating one
     is a tenant-scope action, which sits outside the single resource group this
-    project is allowed to mutate. So this is a runbook, not a record. It
-    describes what to do and what to check — it does not claim it has been done.
+    project is allowed to mutate — and the operator lacks the role to do it
+    anyway (see below). So this is a runbook, not a record. It describes what to
+    do and what to check — it does not claim it has been done.
+
+## Blocked: the operator does not hold the required role
+
+Environment creation is blocked today, and not for a technical reason.
+
+The account driving this work holds **Global Reader**. Reading works — listing
+environments returns `200` with an empty collection, which is how we know the
+tenant has none. Writing does not, and the licensing and capacity APIs return
+`403`. Global Reader is a read-only role by design, so this is the API behaving
+correctly rather than a fault to work around.
+
+Nothing on this page can proceed until someone holding **Global Administrator**
+or **Power Platform Administrator** either performs the steps below or assigns
+one of those roles to the operator. There is no read-only path to an
+environment, and no supported way to self-elevate.
+
+!!! danger "Acceptance gate"
+
+    Tenant-wide publishing stays blocked until **both** hold:
+
+    1. A Power Platform Administrator has created the environments below, and
+    2. Copilot credit capacity has been read from the licensing API or PPAC by an
+       account authorised to read it.
+
+    A `403` is not a capacity reading. Until capacity has actually been observed,
+    treat it as unknown — never as sufficient.
 
 ## Why three environments
-
 Copilot Studio's application lifecycle is solution-based, and solutions only
 move cleanly in one direction: unmanaged where you author, managed everywhere
 else.

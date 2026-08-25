@@ -71,8 +71,8 @@ it found in a public build log has leaked the secret.
 Every push runs:
 
 1. `ruff` lint
-2. `pytest` — the scanner rules, the tier maths, the boundary rules, the region
-   gates. No test needs network access or an Azure login.
+2. `pytest` — the scanner rules, the tier maths and the ownership-boundary rules.
+   No test needs network access or an Azure login.
 3. `foundry boundary --no-live` — the plan can never drift out of the boundary.
 4. `foundry costs` — live pricing against the real API, hard-failing over budget.
 5. `mkdocs build --strict` — a broken internal link fails the build.
