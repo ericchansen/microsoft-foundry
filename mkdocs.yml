@@ -83,6 +83,7 @@ nav:
       - Ownership boundary: platform/boundaries.md
       - Telemetry spine: platform/telemetry-spine.md
       - AI gateway: platform/ai-gateway.md
+      - Model governance: platform/model-governance.md
       - Power Platform: platform/power-platform.md
   - Operations:
       - Verification: operations/verification.md

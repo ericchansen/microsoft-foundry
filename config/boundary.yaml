@@ -72,11 +72,34 @@ resources:
   - name: ai-gateway
     kind: Microsoft.ApiManagement/service
     scope: providers/Microsoft.ApiManagement/service/contoso-agents-gateway
+  - name: ai-gateway-policy-fragments
+    kind: Microsoft.ApiManagement/service/policyFragments
+    scope: providers/Microsoft.ApiManagement/service/contoso-agents-gateway/policyFragments/*-token-governance
+  - name: ai-gateway-backend
+    kind: Microsoft.ApiManagement/service/backends
+    scope: providers/Microsoft.ApiManagement/service/contoso-agents-gateway/backends/foundry-models
+  - name: ai-gateway-project-apis
+    kind: Microsoft.ApiManagement/service/apis
+    scope: providers/Microsoft.ApiManagement/service/contoso-agents-gateway/apis/foundry-*
+  - name: ai-gateway-project-subscriptions
+    kind: Microsoft.ApiManagement/service/subscriptions
+    scope: providers/Microsoft.ApiManagement/service/contoso-agents-gateway/subscriptions/*-gateway
+  - name: foundry-guardrail-policy
+    kind: Microsoft.CognitiveServices/accounts/raiPolicies
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/raiPolicies/contoso-agents-guardrails
 
 diagnostic_settings:
   - name: ai-gateway-logs
     kind: Microsoft.Insights/diagnosticSettings
     scope: providers/Microsoft.ApiManagement/service/contoso-agents-gateway/providers/Microsoft.Insights/diagnosticSettings/contoso-agents-gateway-logs
+
+policy_assignments:
+  - name: approved-models
+    kind: Microsoft.Authorization/policyAssignments
+    scope: .
+  - name: model-eligibility
+    kind: Microsoft.Authorization/policyAssignments
+    scope: .
 
 # Identities. All are created inside the boundary. Reusing any pre-existing
 # identity is rejected by the `plan:no-reuse` check.
@@ -137,6 +160,10 @@ role_assignments:
     role: Privileged Monitoring Data Reader
     principal: platform-project
     scope: providers/microsoft.insights/components/contoso-agents-insights
+  - name: gateway-accesses-foundry
+    role: Foundry User
+    principal: ai-gateway
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry
 
 # Teardown. Deleting the resource group removes everything above in one action,
 # which is the point of keeping the blast radius to a single group.

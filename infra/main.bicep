@@ -44,6 +44,8 @@ param tags object = {
   'cost-centre': 'demo'
 }
 
+var gatewayConfig = loadYamlContent('../config/gateway.yaml')
+
 module monitoring 'modules/monitoring.bicep' = {
   name: 'monitoring'
   params: {
@@ -123,6 +125,32 @@ resource foundryProjects 'Microsoft.CognitiveServices/accounts/projects@2026-07-
     displayName: 'Contoso ${projectName}'
   }
 }]
+
+module modelGovernance 'modules/model-governance.bicep' = {
+  name: 'model-governance'
+  params: {
+    foundryAccountName: foundryAccount.name
+    resourcePrefix: resourcePrefix
+    allowedModelPublishers: gatewayConfig.model_governance.allowed_publishers
+    allowedModelAssetIds: gatewayConfig.model_governance.allowed_asset_ids
+    onlyAllowDirectFromAzure: gatewayConfig.model_governance.only_allow_direct_from_azure
+    denyPreviewModels: gatewayConfig.model_governance.deny_preview_models
+    tags: tags
+  }
+}
+
+module gatewayAssociation 'modules/gateway-association.bicep' = {
+  name: 'gateway-association'
+  params: {
+    gatewayName: gateway.outputs.gatewayName
+    foundryAccountName: foundryAccount.name
+    projectNames: projectNames
+    projectTokenLimits: gatewayConfig.projects
+  }
+  dependsOn: [
+    foundryProjects
+  ]
+}
 
 resource projectAppInsightsConnections 'Microsoft.CognitiveServices/accounts/projects/connections@2026-05-01' = [for (projectName, index) in projectNames: {
   parent: foundryProjects[index]
@@ -239,3 +267,7 @@ output deployIdentityClientId string = identities.outputs.deployIdentityClientId
 output runtimeIdentityName string = identities.outputs.runtimeIdentityName
 output gatewayName string = gateway.outputs.gatewayName
 output gatewayResourceId string = gateway.outputs.gatewayResourceId
+output approvedModelsAssignmentName string = modelGovernance.outputs.approvedModelsAssignmentName
+output modelEligibilityAssignmentName string = modelGovernance.outputs.modelEligibilityAssignmentName
+output guardrailPolicyName string = modelGovernance.outputs.guardrailPolicyName
+output gatewayEnrolledProjects array = gatewayAssociation.outputs.enrolledProjects

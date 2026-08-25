@@ -14,9 +14,11 @@ from pathlib import Path
 
 import yaml
 
+from . import azure_cli
 from . import boundary as boundary_mod
 from . import costs as costs_mod
 from . import discovery as discovery_mod
+from . import gateway as gateway_mod
 from . import regions as regions_mod
 from . import scan as scan_mod
 
@@ -29,6 +31,7 @@ DEFAULT_CACHE = REPO_ROOT / "costs" / "price-cache.json"
 DEFAULT_DATA = REPO_ROOT / "data"
 DEFAULT_SPINE_CONFIG = DEFAULT_CONFIG / "data-spine.yaml"
 DEFAULT_TOOLBOX = DEFAULT_CONFIG / "toolbox"
+DEFAULT_GATEWAY_CONFIG = REPO_ROOT / "config" / "gateway.yaml"
 
 #: Hostnames the published site is *expected* to link to. These are Microsoft's
 #: own portals and documentation, not tenant-specific endpoints.
@@ -229,6 +232,31 @@ def cmd_scan(args: argparse.Namespace) -> int:
     return exit_code
 
 
+def cmd_gateway(args: argparse.Namespace) -> int:
+    config = gateway_mod.load_config(Path(args.gateway_config))
+    if args.gateway_command == "render-policies":
+        paths = gateway_mod.write_policy_fragments(config, Path(args.output))
+        for path in paths:
+            print(f"wrote {path}")
+        return 0
+
+    status = gateway_mod.collect_status(args.resource_group, args.resource_prefix, config)
+    path = _write(Path(args.internal) / "gateway-verification.json", gateway_mod.status_to_json(status))
+    print(f"APIM: {status.apim_sku} in {status.apim_location} ({status.apim_state})")
+    print(f"managed identity: {status.managed_identity}")
+    print(f"resource-specific gateway logs: {status.resource_specific_logs}")
+    print(f"enrolled projects: {', '.join(status.enrolled_projects)}")
+    print(f"token policies: {', '.join(status.token_policy_projects)}")
+    print(f"model policy assignments: {len(status.policy_assignments)}")
+    print(
+        "guardrail policy: "
+        f"{status.guardrail_policy_name} "
+        f"({status.guardrail_policy_mode}, {status.guardrail_filter_count} filters)"
+    )
+    print(f"evidence: {path}")
+    return 0 if status.ok else 1
+
+
 # --------------------------------------------------------------------------- #
 
 
@@ -414,6 +442,19 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-presidio", action="store_true", help="skip the optional Presidio pass")
     p.set_defaults(func=cmd_data)
 
+    p = sub.add_parser("gateway", help="render and verify AI gateway governance")
+    p.add_argument("--gateway-config", default=str(DEFAULT_GATEWAY_CONFIG))
+    gateway_sub = p.add_subparsers(dest="gateway_command", required=True)
+
+    gateway_verify = gateway_sub.add_parser("verify", help="read back the live gateway controls")
+    gateway_verify.add_argument("--resource-group", default="rg-contoso-agents")
+    gateway_verify.add_argument("--resource-prefix", default="contoso-agents")
+    gateway_verify.set_defaults(func=cmd_gateway)
+
+    gateway_render = gateway_sub.add_parser("render-policies", help="render project token policy fragments")
+    gateway_render.add_argument("--output", default=str(DEFAULT_REPORTS / "gateway-policies"))
+    gateway_render.set_defaults(func=cmd_gateway)
+
     p = sub.add_parser("toolbox", help="validate the tool contracts and smoke-test them against the data spine")
     p.add_argument(
         "action",
@@ -431,7 +472,13 @@ def main(argv: list[str] | None = None) -> int:
         args.cache = None
     try:
         return int(args.func(args))
-    except (costs_mod.CostModelError, PermissionError, KeyError) as exc:
+    except (
+        costs_mod.CostModelError,
+        azure_cli.AzureCliError,
+        gateway_mod.GatewayConfigError,
+        PermissionError,
+        KeyError,
+    ) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     except Exception as exc:  # noqa: BLE001 - see comment

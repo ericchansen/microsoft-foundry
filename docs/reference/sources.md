@@ -31,10 +31,21 @@ and quota are separate gates.
 | Configure AI Gateway in Foundry | <https://learn.microsoft.com/azure/foundry/configuration/enable-ai-api-management-gateway-portal> |
 | API Management monitoring | <https://learn.microsoft.com/azure/api-management/api-management-howto-use-azure-monitor> |
 | Gateway log schema | <https://learn.microsoft.com/azure/azure-monitor/reference/tables/apimanagementgatewaylogs> |
+| LLM token limits | <https://learn.microsoft.com/azure/api-management/llm-token-limit-policy> |
+| Import a Foundry API | <https://learn.microsoft.com/azure/api-management/azure-ai-foundry-api> |
 
 The v2 tiers are available in a **narrower** set of regions than API Management
 itself. The region availability page is the authority, not the resource
 provider's location list.
+
+## Model governance and safety
+
+| Topic | Source |
+| --- | --- |
+| Built-in model deployment policies | <https://learn.microsoft.com/azure/foundry/how-to/model-deployment-policy> |
+| RAI policy Bicep resource | <https://learn.microsoft.com/azure/templates/microsoft.cognitiveservices/2026-05-01/accounts/raipolicies> |
+| Content filtering | <https://learn.microsoft.com/azure/foundry/openai/concepts/content-filter> |
+| Abuse monitoring | <https://learn.microsoft.com/azure/foundry/openai/concepts/abuse-monitoring> |
 
 ## Azure SRE Agent
 

@@ -18,6 +18,12 @@ def infra(repo_root: Path) -> dict[str, str]:
         "params": repo_root / "infra" / "main.bicepparam",
         "monitoring": repo_root / "infra" / "modules" / "monitoring.bicep",
         "gateway": repo_root / "infra" / "modules" / "gateway.bicep",
+        "association": repo_root / "infra" / "modules" / "gateway-association.bicep",
+        "governance": repo_root / "infra" / "modules" / "model-governance.bicep",
+        "association_entrypoint": repo_root / "infra" / "gateway-association.bicep",
+        "governance_entrypoint": repo_root / "infra" / "model-governance.bicep",
+        "deny_probe": repo_root / "infra" / "validation" / "unapproved-model.bicep",
+        "custom_agent": repo_root / "infra" / "policies" / "custom-agent.xml",
         "identity": repo_root / "infra" / "modules" / "identity.bicep",
         "data": repo_root / "infra" / "modules" / "secure-data.bicep",
     }
@@ -86,6 +92,65 @@ def test_gateway_logs_use_resource_specific_schema(infra):
     assert "logAnalyticsDestinationType: 'Dedicated'" in infra["gateway"]
     assert "category: 'GatewayLogs'" in infra["gateway"]
     assert "logAnalyticsWorkspaceResourceId: monitoring.outputs.logAnalyticsWorkspaceResourceId" in infra["main"]
+
+
+def test_each_project_has_an_explicit_gateway_route_and_connection(infra):
+    assert "for projectName in projectNames" in infra["association"]
+    assert "name: 'foundry-${projectName}'" in infra["association"]
+    assert "name: 'ai-gateway-${projectName}'" in infra["association"]
+    assert "category: 'ApiManagement'" in infra["association"]
+    assert "authHeaderName: 'Ocp-Apim-Subscription-Key'" in infra["association"]
+    assert "projectSubscriptions[index].listSecrets().primaryKey" in infra["association"]
+    assert "gatewayConfig.projects" in infra["association_entrypoint"]
+
+
+def test_gateway_backend_uses_managed_identity(infra):
+    assert "authentication-managed-identity" in infra["association"]
+    assert "https://cognitiveservices.azure.com" in infra["association"]
+    assert "principalId: gateway.identity.principalId" in infra["association"]
+    assert "scope: foundryAccount" in infra["association"]
+
+
+def test_token_governance_has_rate_and_total_quota(infra):
+    assert "llm-token-limit" in infra["association"]
+    assert "tokens-per-minute=" in infra["association"]
+    assert "token-quota=" in infra["association"]
+    assert "token-quota-period=" in infra["association"]
+    assert "estimate-prompt-tokens=\"true\"" in infra["association"]
+
+
+def test_model_governance_is_resource_group_scoped(infra):
+    assert "Microsoft.Authorization/policyAssignments@2025-03-01" in infra["governance"]
+    assert "tenantResourceId(" in infra["governance"]
+    assert "scope: subscription()" not in infra["governance"]
+    assert "scope: tenant()" not in infra["governance"]
+    assert "value: 'Deny'" in infra["governance"]
+    assert "denyPreviewModels" in infra["governance"]
+    assert "onlyAllowDirectFromAzure" in infra["governance"]
+
+
+def test_guardrail_policy_uses_stable_api_and_requires_deployment_attachment(infra):
+    assert "accounts/raiPolicies@2026-05-01" in infra["governance"]
+    assert "basePolicyName: 'Microsoft.DefaultV2'" in infra["governance"]
+    assert "name: 'Jailbreak'" in infra["governance"]
+    assert "output guardrailPolicyName" in infra["governance"]
+    assert "output guardrailPolicyName string = modelGovernance.outputs.guardrailPolicyName" in infra["main"]
+    guardrail_output = "output guardrailPolicyName string = governance.outputs.guardrailPolicyName"
+    assert guardrail_output in infra["governance_entrypoint"]
+    assert "raiPolicyName" not in infra["association"]
+
+
+def test_unapproved_model_probe_is_what_if_only_contract(infra):
+    assert "unapproved-policy-probe" in infra["deny_probe"]
+    assert "Microsoft.CognitiveServices/accounts/deployments@2025-06-01" in infra["deny_probe"]
+
+
+def test_custom_agent_template_keeps_backend_auth_at_gateway(infra):
+    assert "{{CUSTOM_AGENT_BACKEND_ID}}" in infra["custom_agent"]
+    assert "{{CUSTOM_AGENT_ENTRA_RESOURCE}}" in infra["custom_agent"]
+    assert "authentication-managed-identity" in infra["custom_agent"]
+    assert "llm-token-limit" in infra["custom_agent"]
+    assert "set-backend-service" in infra["custom_agent"]
 
 
 def test_app_insights_local_auth_exception_is_explicit(infra):

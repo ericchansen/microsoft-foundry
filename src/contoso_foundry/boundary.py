@@ -75,7 +75,14 @@ def load_plan(path: Path) -> dict[str, Any]:
 def _iter_scoped_entries(plan: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
     """Flatten every plan section that declares something with a scope."""
     entries: list[tuple[str, dict[str, Any]]] = []
-    for section in ("resources", "identities", "role_assignments", "diagnostic_settings", "teardown"):
+    for section in (
+        "resources",
+        "identities",
+        "role_assignments",
+        "diagnostic_settings",
+        "policy_assignments",
+        "teardown",
+    ):
         for entry in plan.get(section, []) or []:
             entries.append((section, entry))
     return entries
@@ -125,7 +132,7 @@ def check_plan(plan: dict[str, Any], *, expected_resource_group: str | None = No
         if re.search(r"resourcegroups?/", scope, re.I):
             report.fail("plan:relative-scopes", subject, f"scope {scope!r} names a resource group")
             continue
-        if re.search(r"subscriptions/", scope, re.I):
+        if scope.lower().startswith("subscriptions/"):
             report.fail("plan:relative-scopes", subject, f"scope {scope!r} names a subscription")
 
     report.checks_run.append("plan:no-reuse")

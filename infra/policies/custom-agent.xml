@@ -1,0 +1,24 @@
+<policies>
+  <inbound>
+    <base />
+    <llm-token-limit
+      counter-key="@(context.Subscription?.Id ?? context.Request.IpAddress)"
+      tokens-per-minute="{{CUSTOM_AGENT_TOKENS_PER_MINUTE}}"
+      token-quota="{{CUSTOM_AGENT_TOTAL_TOKEN_QUOTA}}"
+      token-quota-period="Monthly"
+      estimate-prompt-tokens="true"
+      remaining-tokens-header-name="x-contoso-remaining-tpm"
+      remaining-quota-tokens-header-name="x-contoso-remaining-quota" />
+    <authentication-managed-identity resource="{{CUSTOM_AGENT_ENTRA_RESOURCE}}" />
+    <set-backend-service backend-id="{{CUSTOM_AGENT_BACKEND_ID}}" />
+  </inbound>
+  <backend>
+    <forward-request />
+  </backend>
+  <outbound>
+    <base />
+  </outbound>
+  <on-error>
+    <base />
+  </on-error>
+</policies>

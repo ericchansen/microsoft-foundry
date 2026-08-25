@@ -86,6 +86,11 @@ class TestRelativeScopes:
         report = boundary.check_plan(plan(resources=[{"name": "x"}]))
         assert "plan:relative-scopes" in failed_checks(report)
 
+    def test_accepts_apim_subscription_child_resource(self):
+        scope = "providers/Microsoft.ApiManagement/service/gateway/subscriptions/project"
+        report = boundary.check_plan(plan(resources=[{"name": "x", "scope": scope}]))
+        assert report.ok
+
     def test_checks_identities_and_teardown_too(self, ):
         """Every section that declares a scope is subject to the same rule."""
         report = boundary.check_plan(plan(identities=[{"name": "id", "scope": "/subscriptions/abc"}]))
