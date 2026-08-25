@@ -15,6 +15,10 @@ relying on one.
 | Agent Service overview | <https://learn.microsoft.com/azure/foundry/agents/overview> |
 | Agent Service limits, quotas and regions | <https://learn.microsoft.com/azure/foundry/agents/concepts/limits-quotas-regions> |
 | Model quotas and limits | <https://learn.microsoft.com/azure/foundry/openai/quotas-limits> |
+| Agent tracing setup | <https://learn.microsoft.com/azure/foundry/observability/how-to/trace-agent-setup> |
+| Trace evaluation troubleshooting | <https://learn.microsoft.com/azure/foundry/observability/how-to/troubleshooting#trace-evaluation-issues> |
+| Application Insights connection Bicep sample | <https://github.com/microsoft-foundry/foundry-samples/blob/main/infrastructure/infrastructure-setup-bicep/01-connections/connection-application-insights.bicep> |
+| Foundry RBAC | <https://learn.microsoft.com/azure/foundry/concepts/rbac-foundry> |
 
 Model quota is **subscription-level**, and Global Standard deployments draw from
 a single pool shared across regions. A region can therefore pass a model
@@ -77,6 +81,8 @@ appear in a Retail Prices API response. The cost model subtracts them explicitly
 | --- | --- |
 | Log Analytics cost calculations | <https://learn.microsoft.com/azure/azure-monitor/logs/cost-logs> |
 | Pricing | <https://azure.microsoft.com/pricing/details/monitor/> |
+| Log data retention | <https://learn.microsoft.com/azure/azure-monitor/logs/data-retention-configure> |
+| Protected table access | <https://learn.microsoft.com/azure/azure-monitor/logs/protected-tables-configure> |
 
 ## Pricing API
 

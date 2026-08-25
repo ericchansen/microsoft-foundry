@@ -34,6 +34,13 @@ _FORBIDDEN_SCOPE_PREFIXES = ("/", "/subscriptions", "/providers/Microsoft.Manage
 _FORBIDDEN_SCOPE_WORDS = frozenset(
     {"subscription", "tenant", "management-group", "management group", "root", "/"}
 )
+_IDENTITY_RESOURCE_TYPES = frozenset(
+    {
+        "microsoft.cognitiveservices/accounts",
+        "microsoft.cognitiveservices/accounts/projects",
+        "microsoft.managedidentity/userassignedidentities",
+    }
+)
 
 
 @dataclass
@@ -78,6 +85,223 @@ def _iter_scoped_entries(plan: dict[str, Any]) -> list[tuple[str, dict[str, Any]
         for entry in plan.get(section, []) or []:
             entries.append((section, entry))
     return entries
+
+
+def _scope_matches(scope: str, pattern: str) -> bool:
+    """Match one ARM path segment at a time so wildcards cannot cross `/`."""
+    expression = re.escape(pattern).replace(r"\*", "[^/]*")
+    return re.fullmatch(expression, scope, flags=re.IGNORECASE) is not None
+
+
+def _relative_scope(resource_id: str, resource_group_id: str) -> str | None:
+    marker = f"{resource_group_id.rstrip('/')}/"
+    if not resource_id.lower().startswith(marker.lower()):
+        return None
+    return resource_id[len(marker) :]
+
+
+def _collection_values(document: Any) -> list[dict[str, Any]]:
+    if not isinstance(document, dict) or not isinstance(document.get("value"), list):
+        raise azure_cli.AzureCliError("Azure resource collection response did not contain a value array")
+    return [item for item in document["value"] if isinstance(item, dict)]
+
+
+def _enumerate_managed_children(
+    plan: dict[str, Any],
+    resources: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Enumerate child types that `az resource list` omits."""
+    children: list[dict[str, Any]] = []
+
+    declared_projects = {
+        str(entry.get("scope", "")).lower()
+        for entry in plan.get("resources", []) or []
+        if str(entry.get("kind", "")).lower() == "microsoft.cognitiveservices/accounts/projects"
+    }
+    for resource in resources:
+        resource_id = str(resource.get("id", ""))
+        resource_type = str(resource.get("type", "")).lower()
+        if resource_type == "microsoft.cognitiveservices/accounts":
+            projects = _collection_values(
+                azure_cli.run(
+                    [
+                        "rest",
+                        "--method",
+                        "get",
+                        "--url",
+                        (
+                            f"https://management.azure.com{resource_id}/projects"
+                            "?api-version=2026-07-01"
+                        ),
+                    ]
+                )
+            )
+            children.extend(projects)
+            for project in projects:
+                project_id = str(project.get("id", ""))
+                children.extend(
+                    _collection_values(
+                        azure_cli.run(
+                            [
+                                "rest",
+                                "--method",
+                                "get",
+                                "--url",
+                                (
+                                    f"https://management.azure.com{project_id}/connections"
+                                    "?api-version=2026-05-01"
+                                ),
+                            ]
+                        )
+                    )
+                )
+        elif resource_type == "microsoft.cognitiveservices/accounts/projects":
+            relative = next(
+                (
+                    scope
+                    for scope in declared_projects
+                    if resource_id.lower().endswith(f"/{scope}")
+                ),
+                None,
+            )
+            if relative:
+                children.extend(
+                    _collection_values(
+                        azure_cli.run(
+                            [
+                                "rest",
+                                "--method",
+                                "get",
+                                "--url",
+                                (
+                                    f"https://management.azure.com{resource_id}/connections"
+                                    "?api-version=2026-05-01"
+                                ),
+                            ]
+                        )
+                    )
+                )
+        elif resource_type == "microsoft.managedidentity/userassignedidentities":
+            children.extend(
+                _collection_values(
+                    azure_cli.run(
+                        [
+                            "rest",
+                            "--method",
+                            "get",
+                            "--url",
+                            (
+                                f"https://management.azure.com{resource_id}/federatedIdentityCredentials"
+                                "?api-version=2024-11-30"
+                            ),
+                        ]
+                    )
+                )
+            )
+        elif resource_type == "microsoft.storage/storageaccounts":
+            children.extend(
+                _collection_values(
+                    azure_cli.run(
+                        [
+                            "rest",
+                            "--method",
+                            "get",
+                            "--url",
+                            (
+                                f"https://management.azure.com{resource_id}/blobServices"
+                                "?api-version=2025-08-01"
+                            ),
+                        ]
+                    )
+                )
+            )
+    return children
+
+
+def _principal_id(resource: dict[str, Any]) -> str | None:
+    identity = resource.get("identity", {}) or {}
+    properties = resource.get("properties", {}) or {}
+    value = identity.get("principalId") or properties.get("principalId")
+    return str(value).lower() if value else None
+
+
+def _check_live_role_assignments(
+    report: BoundaryReport,
+    plan: dict[str, Any],
+    resource_group_id: str,
+    resources_by_declaration: dict[str, dict[str, Any]],
+) -> None:
+    role_ids = {
+        str(name): str(role_id).lower()
+        for name, role_id in (plan.get("role_definitions", {}) or {}).items()
+    }
+    principals: dict[str, str] = {}
+    referenced_principals = {
+        str(assignment.get("principal", ""))
+        for assignment in plan.get("role_assignments", []) or []
+    }
+    identity_resources = {
+        name
+        for name, resource in resources_by_declaration.items()
+        if str(resource.get("type", "")).lower() in _IDENTITY_RESOURCE_TYPES
+        or _principal_id(resource)
+    }
+    for name in referenced_principals | identity_resources:
+        resource = resources_by_declaration.get(name)
+        if not resource:
+            continue
+        if resolved := _principal_id(resource):
+            principals[name] = resolved
+            continue
+        detail = azure_cli.run(["resource", "show", "--ids", str(resource["id"])])
+        if isinstance(detail, dict) and (resolved := _principal_id(detail)):
+            principals[name] = resolved
+        else:
+            report.fail(
+                "live:principal-inventory",
+                name,
+                "could not resolve the principal ID for an owned identity-bearing resource",
+            )
+
+    expected: set[tuple[str, str, str]] = set()
+    for assignment in plan.get("role_assignments", []) or []:
+        principal = principals.get(str(assignment.get("principal", "")))
+        role_id = role_ids.get(str(assignment.get("role", "")))
+        scope = str(assignment.get("scope", ""))
+        if not principal or not role_id:
+            continue
+        full_scope = resource_group_id if scope == "." else f"{resource_group_id}/{scope}"
+        expected.add((principal, role_id, full_scope.lower()))
+
+    live_assignments = azure_cli.run(["role", "assignment", "list", "--all"]) or []
+    unexpected: list[str] = []
+    owned_principals = set(principals.values())
+    for assignment in live_assignments:
+        if not isinstance(assignment, dict):
+            continue
+        scope = str(assignment.get("scope", "")).lower()
+        principal = str(assignment.get("principalId", "")).lower()
+        inside_boundary = (
+            scope == resource_group_id.lower()
+            or scope.startswith(f"{resource_group_id.lower()}/")
+        )
+        if not inside_boundary and principal not in owned_principals:
+            continue
+        actual = (
+            principal,
+            str(assignment.get("roleDefinitionId", "")).rsplit("/", maxsplit=1)[-1].lower(),
+            scope,
+        )
+        if actual not in expected:
+            unexpected.append(
+                f"principal={actual[0] or '<missing>'}, role={actual[1] or '<missing>'}, scope={scope}"
+            )
+    if unexpected:
+        report.fail(
+            "live:declared-role-assignments",
+            report.resource_group,
+            f"contains undeclared direct role assignments: {sorted(unexpected)}",
+        )
 
 
 def check_plan(plan: dict[str, Any], *, expected_resource_group: str | None = None) -> BoundaryReport:
@@ -154,7 +378,9 @@ def check_plan(plan: dict[str, Any], *, expected_resource_group: str | None = No
 
     report.checks_run.append("plan:diagnostic-targets")
     declared_resources = {
-        str(e.get("name")) for e in plan.get("resources", []) or [] if e.get("name")
+        str(entry.get("name"))
+        for entry in plan.get("resources", []) or []
+        if entry.get("name")
     }
     for entry in plan.get("diagnostic_settings", []) or []:
         name = str(entry.get("name", "<unnamed>"))
@@ -162,9 +388,6 @@ def check_plan(plan: dict[str, Any], *, expected_resource_group: str | None = No
         if not workspace:
             report.fail("plan:diagnostic-targets", name, "no 'target_workspace' declared")
         elif workspace not in declared_resources:
-            # The setting's own scope being relative only proves *what* is emitting
-            # telemetry. The destination is what decides whether the data leaves
-            # the boundary, so it must name a resource this plan creates.
             report.fail(
                 "plan:diagnostic-targets",
                 name,
@@ -205,7 +428,12 @@ def check_live(report: BoundaryReport, plan: dict[str, Any]) -> BoundaryReport:
     try:
         groups = azure_cli.run(["group", "list"]) or []
     except azure_cli.AzureCliError as exc:
-        report.checks_run.append(f"live:skipped ({exc})")
+        report.checks_run.append("live:protected-resource-groups")
+        report.fail(
+            "live:protected-resource-groups",
+            report.resource_group,
+            f"could not enumerate resource groups: {exc}",
+        )
         return report
 
     report.live = True
@@ -215,17 +443,102 @@ def check_live(report: BoundaryReport, plan: dict[str, Any]) -> BoundaryReport:
     report.target_exists = report.resource_group in names
 
     report.checks_run.append("live:target-not-adopted")
-    if report.target_exists and not plan.get("allow_existing_resource_group", False):
-        resources = azure_cli.try_run(
-            ["resource", "list", "-g", report.resource_group], default=[]
-        ) or []
-        if resources:
+    if report.target_exists:
+        target_group = next(g for g in groups if str(g.get("name")) == report.resource_group)
+        expected_tags = plan.get("tags", {}) or {}
+        actual_tags = target_group.get("tags", {}) or {}
+        mismatched_tags = {
+            key: {"expected": value, "actual": actual_tags.get(key)}
+            for key, value in expected_tags.items()
+            if actual_tags.get(key) != value
+        }
+        if mismatched_tags:
+            report.fail(
+                "live:target-ownership-tags",
+                report.resource_group,
+                f"ownership tags do not match the plan: {mismatched_tags}",
+            )
+
+        try:
+            top_level_resources = azure_cli.run(["resource", "list", "-g", report.resource_group]) or []
+            all_resources = [*top_level_resources, *_enumerate_managed_children(plan, top_level_resources)]
+            resources = list({
+                str(resource.get("id", "")).lower(): resource
+                for resource in all_resources
+                if resource.get("id")
+            }.values())
+        except azure_cli.AzureCliError as exc:
+            report.fail(
+                "live:resource-inventory",
+                report.resource_group,
+                f"could not enumerate the complete resource inventory: {exc}",
+            )
+            return report
+        if not plan.get("allow_existing_resource_group", False):
             report.fail(
                 "live:target-not-adopted",
                 report.resource_group,
-                f"already contains {len(resources)} resource(s) and the plan does not set "
-                "allow_existing_resource_group. Refusing to adopt a resource group this project did not create.",
+                "already exists and the plan does not permit a previously verified project-owned group",
             )
+        else:
+            declarations = {
+                str(entry.get("name")): str(entry.get("scope", ""))
+                for section, entry in _iter_scoped_entries(plan)
+                if section in {"resources", "identities"}
+            }
+            resource_group_id = str(target_group.get("id", ""))
+            if not resource_group_id:
+                report.fail(
+                    "live:resource-inventory",
+                    report.resource_group,
+                    "Azure did not return the resource group ID required for inventory attestation",
+                )
+                return report
+            unexpected: list[str] = []
+            match_counts = {name: 0 for name in declarations}
+            resources_by_declaration: dict[str, dict[str, Any]] = {}
+            for resource in resources:
+                resource_id = str(resource.get("id", ""))
+                relative_scope = _relative_scope(resource_id, resource_group_id)
+                if relative_scope is None:
+                    unexpected.append(resource_id or str(resource.get("name", "<unnamed>")))
+                    continue
+                matches = [
+                    name
+                    for name, pattern in declarations.items()
+                    if _scope_matches(relative_scope, pattern)
+                ]
+                if len(matches) != 1:
+                    unexpected.append(relative_scope)
+                    continue
+                match_counts[matches[0]] += 1
+                resources_by_declaration[matches[0]] = resource
+            duplicates = sorted(name for name, count in match_counts.items() if count > 1)
+            if unexpected:
+                report.fail(
+                    "live:declared-resource-inventory",
+                    report.resource_group,
+                    f"contains resources not declared by the ownership plan: {sorted(unexpected)}",
+                )
+            if duplicates:
+                report.fail(
+                    "live:declared-resource-cardinality",
+                    report.resource_group,
+                    f"contains multiple resources matching one declaration: {duplicates}",
+                )
+            try:
+                _check_live_role_assignments(
+                    report,
+                    plan,
+                    resource_group_id,
+                    resources_by_declaration,
+                )
+            except azure_cli.AzureCliError as exc:
+                report.fail(
+                    "live:role-assignment-inventory",
+                    report.resource_group,
+                    f"could not enumerate role assignments: {exc}",
+                )
     return report
 
 

@@ -85,9 +85,11 @@ resource group" is never mistaken for complete cleanup.
 
 ## Current state
 
-The most recent run confirms the target resource group **does not yet exist**, so
-the boundary is clean and no pre-existing resource is at risk of adoption. Phase 0
-provisions nothing.
+The telemetry spine now occupies the dedicated resource group. Before any
+what-if or deployment, the live boundary gate verifies all ownership tags, the
+top-level and managed child-resource inventory, and direct role assignments.
+Anything undeclared blocks the operation; resources outside the group remain
+read-only.
 
 ## Re-running it
 
