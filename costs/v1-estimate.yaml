@@ -158,22 +158,6 @@ line_items:
       tiered and the included free allocation is priced at zero, which the
       graduated tier maths applies automatically.
 
-  - id: shared-container-registry
-    component: Shared Contoso agent Azure Container Registry
-    billing: azure
-    quantity: 30.4375
-    unit: registry-days
-    expect_unit_of_measure: 1/Day
-    meter:
-      serviceName: Container Registry
-      productName: Container Registry
-      skuName: Basic
-      meterName: Basic Registry Unit
-    source: https://azure.microsoft.com/pricing/details/container-registry/
-    notes: >-
-      One project-owned Basic registry for 730 hours / 24, shared across the agent
-      estate. This fixed cost is recorded once rather than repeated per hosted agent.
-
   - id: support-model-input
     component: Contoso Support gpt-5.4-mini input
     billing: azure

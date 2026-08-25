@@ -272,9 +272,9 @@ class TestShippedEstimate:
         ids = [i["id"] for i in estimate["line_items"]]
         assert len(ids) == len(set(ids))
 
-    def test_support_uses_one_shared_registry_and_bounded_token_allocation(self, estimate):
+    def test_support_reuses_platform_registry_and_has_bounded_token_allocation(self, estimate):
         items = {item["id"]: item for item in estimate["line_items"]}
-        assert items["shared-container-registry"]["meter"]["skuName"] == "Basic"
+        assert "shared-container-registry" not in items
         assert items["support-model-input"]["quantity"] == 1_500_000
         assert items["support-model-output"]["quantity"] == 300_000
         assert "support-private-acr" not in items

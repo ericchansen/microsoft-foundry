@@ -127,8 +127,9 @@ exposes only support, customer and catalogue reads; the shared Toolbox write
 contract remains unavailable. This demonstrates row-level authorization, not a
 durable case-management store.
 
-The [cost model](../platform/costs.md) records the shared Basic registry once for
-the whole agent estate and assigns Support 1.5 million input and 300,000 output
-`gpt-5.4-mini` tokens per month. Hosted-agent CPU and memory have no unambiguous
-retail meter, so the model holds a non-zero $40 pilot reserve rather than
-claiming that compute is free.
+The [cost model](../platform/costs.md) leaves the shared Basic registry charge to
+the Gateway/platform integration slice, which records that estate-wide fixed cost
+once. Support assigns 1.5 million input and 300,000 output `gpt-5.4-mini` tokens
+per month. Hosted-agent CPU and memory have no unambiguous retail meter, so the
+model holds a non-zero $40 pilot reserve rather than claiming that compute is
+free.
