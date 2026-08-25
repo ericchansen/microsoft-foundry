@@ -1,0 +1,56 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+name: contoso-support
+
+services:
+  ai-project:
+    host: azure.ai.project
+    deployments:
+      - name: gpt-5.4-mini
+        model:
+          format: OpenAI
+          name: gpt-5.4-mini
+          version: "2026-03-17"
+        sku:
+          name: GlobalStandard
+          capacity: 10
+
+  contoso-support-entitlements:
+    host: azure.ai.connection
+    uses:
+      - ai-project
+    category: CustomKeys
+    target: contoso-support-principal-map
+    authType: CustomKeys
+    credentials:
+      principal_map: ${CONTOSO_SUPPORT_PRINCIPAL_MAP_JSON}
+
+  contoso-support:
+    host: azure.ai.agent
+    project: .
+    language: docker
+    uses:
+      - ai-project
+      - contoso-support-entitlements
+    kind: hosted
+    name: contoso-support
+    description: Multi-agent support investigation over canonical synthetic Contoso data.
+    startupCommand: python -m contoso_foundry.support_agent.runtime
+    protocols:
+      - protocol: responses
+        version: 2.0.0
+    env:
+      MICROSOFT_FOUNDRY_MODEL_DEPLOYMENT_NAME: gpt-5.4-mini
+      CONTOSO_TENANT_KEY: TID-CONTOSO-01
+      CONTOSO_PRINCIPAL_MAP_JSON: "${{connections.contoso-support-entitlements.credentials.principal_map}}"
+      OTEL_SERVICE_NAME: contoso-support
+      ENABLE_INSTRUMENTATION: "true"
+      ENABLE_SENSITIVE_DATA: "false"
+    container:
+      resources:
+        cpu: "0.5"
+        memory: 1Gi
+    agentEndpoint:
+      protocols:
+        - responses
+      authorizationSchemes:
+        - type: Entra
