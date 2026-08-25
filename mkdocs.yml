@@ -1,6 +1,6 @@
 site_name: Contoso Agent Platform
 site_description: >-
-  How Contoso builds a governed, multi-agent platform on Microsoft Foundry —
+  How Contoso builds a governed, multi-agent platform on Microsoft Foundry -
   the architecture, the region and cost decisions, and the evidence behind them.
 site_url: https://ericchansen.github.io/microsoft-foundry/
 repo_url: https://github.com/ericchansen/microsoft-foundry
@@ -73,6 +73,10 @@ nav:
   - Home: index.md
   - Architecture:
       - Overview: architecture/overview.md
+  - Shared data and tools:
+      - Data spine: data/overview.md
+      - Provenance: data/provenance.md
+      - Toolbox contracts: data/toolbox.md
   - Platform decisions:
       - Region selection: platform/regions.md
       - Cost model: platform/costs.md

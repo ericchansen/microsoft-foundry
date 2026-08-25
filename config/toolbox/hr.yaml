@@ -1,0 +1,206 @@
+capability: hr
+version: 1.0.0
+title: HR policy, roster and scoped aggregates
+summary: >-
+  The capability that motivates the whole scoping design. A people partner must
+  be able to ask real questions about their own population and must not be able
+  to ask them about anybody else's - including by rephrasing, by asking for a
+  count instead of a list, or by asking for the schema and inferring the shape of
+  what they were denied.
+
+  Every tool below reads through the same scoped repository. There is no HR read
+  path that does not, which is the property the tests assert rather than a
+  convention the code hopes to keep.
+
+identity:
+  scope_source: server
+  policy_keys: [oid, tid]
+  notes: >-
+    The same prompt sent by an EMEA partner and an APAC partner must return
+    different, non-overlapping rows, and a caller the directory does not
+    recognise must get an error rather than an empty list. "Empty" and "denied"
+    are different answers, and only one of them is honest.
+
+tools:
+  - name: hr_get_policies
+    title: Get HR policies
+    summary: >-
+      Return the HR policies that apply to the caller's population. Region comes
+      from the resolved scope; the category and audience filters narrow within it.
+    side_effect: read
+    data_classification: internal
+    required_roles: [hr.read]
+    parameters:
+      type: object
+      additionalProperties: false
+      properties:
+        category:
+          type: string
+          description: Policy category, for example leave, conduct or benefits.
+        audience:
+          type: string
+          description: Who the policy addresses, for example all-employees or managers.
+        limit:
+          type: integer
+          description: Maximum rows to return, capped server-side.
+          minimum: 1
+          maximum: 200
+      required: []
+    returns:
+      type: array
+      description: HR policies in scope for the caller.
+    examples:
+      - description: Leave policies for my population.
+        arguments: {category: leave}
+
+  - name: hr_search_roster
+    title: Search the roster
+    summary: >-
+      List employees in the caller's population. The region filter is intersected
+      with the caller's scope, never substituted for it, so requesting a region
+      the caller does not hold returns nothing rather than that region's roster.
+    side_effect: read
+    data_classification: personal
+    required_roles: [hr.read]
+    parameters:
+      type: object
+      additionalProperties: false
+      properties:
+        department:
+          type: string
+          description: Department name, for example Field Service or Retail Operations.
+        job_title:
+          type: string
+          description: Job title to match exactly.
+        employment_type:
+          type: string
+          description: Employment type, for example permanent or contract.
+        location_id:
+          type: string
+          description: Canonical location identifier the employee is based at.
+        region:
+          type: string
+          description: >-
+            Business region to narrow to. Intersected with the caller's scope; a
+            region outside it yields no rows.
+        limit:
+          type: integer
+          description: Maximum rows to return, capped server-side.
+          minimum: 1
+          maximum: 200
+      required: []
+    returns:
+      type: array
+      description: Employee records visible to the caller.
+    examples:
+      - description: The same prompt an EMEA and an APAC partner both send.
+        arguments: {department: Field Service, limit: 25}
+
+  - name: hr_count_roster
+    title: Count the roster
+    summary: >-
+      Count employees matching the same filters as the search. Shares the scope
+      predicate with the search deliberately: an unscoped count is a slow read of
+      the rows it counts.
+    side_effect: read
+    data_classification: internal
+    required_roles: [hr.read]
+    parameters:
+      type: object
+      additionalProperties: false
+      properties:
+        department:
+          type: string
+          description: Department name to count within.
+        employment_type:
+          type: string
+          description: Employment type to count within.
+        region:
+          type: string
+          description: Business region to narrow to, intersected with the caller's scope.
+      required: []
+    returns:
+      type: object
+      description: A single count, over the caller's population only.
+    examples:
+      - description: How many contractors do I have.
+        arguments: {employment_type: contract}
+
+  - name: hr_describe_roster
+    title: Describe the roster schema
+    summary: >-
+      Report the columns and filters the roster exposes. Says that a scope
+      applies without saying what it contains: an agent that knows results are
+      region-scoped can explain itself, whereas an agent told which regions it
+      holds will eventually put that in a prompt.
+    side_effect: read
+    data_classification: public
+    required_roles: [hr.read]
+    parameters:
+      type: object
+      additionalProperties: false
+      properties: {}
+      required: []
+    returns:
+      type: object
+      description: The agent-visible schema of the roster.
+    examples:
+      - description: What can I filter on.
+        arguments: {}
+
+  - name: hr_get_management_chain
+    title: Get a management chain
+    summary: >-
+      Walk upward from an employee, stopping at the edge of the caller's scope.
+      A chain that leaves the population is truncated rather than followed, and
+      the truncation is indistinguishable from the chain simply ending.
+    side_effect: read
+    data_classification: personal
+    required_roles: [hr.read]
+    parameters:
+      type: object
+      additionalProperties: false
+      properties:
+        employee_id:
+          type: string
+          description: Canonical employee identifier to start from, for example EMP-0021.
+          pattern: '^EMP-\d{4}$'
+      required: [employee_id]
+    returns:
+      type: array
+      description: The visible portion of the management chain, nearest first.
+    examples:
+      - description: Who does this person report to.
+        arguments: {employee_id: EMP-0021}
+
+  - name: hr_aggregate_roster
+    title: Aggregate the roster
+    summary: >-
+      Group the caller's population and count each group, suppressing any group
+      below the minimum cohort size. Aggregates are the quiet way around row-level
+      security - a caller who cannot read a row but can average a group of one has
+      read it - so suppression happens in the query, not in the presentation.
+    side_effect: read
+    data_classification: internal
+    required_roles: [hr.aggregate]
+    parameters:
+      type: object
+      additionalProperties: false
+      properties:
+        group_by:
+          type: string
+          description: Column to group by. Must be one of the roster's filterable columns.
+          enum: [region, department, job_title, employment_type, location_id]
+        department:
+          type: string
+          description: Restrict the aggregate to one department before grouping.
+        region:
+          type: string
+          description: Business region to narrow to, intersected with the caller's scope.
+      required: [group_by]
+    returns:
+      type: array
+      description: Groups at or above the minimum cohort size, with counts.
+    examples:
+      - description: Headcount by department across my population.
+        arguments: {group_by: department}

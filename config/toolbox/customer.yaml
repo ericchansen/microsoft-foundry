@@ -1,0 +1,102 @@
+capability: customer
+version: 1.0.0
+title: Customer and identity context
+summary: >-
+  Who the caller is, and which customers they are entitled to see. Every other
+  capability leans on this one for the notion of "my region", so it is the first
+  contract an agent should call and the one whose scope behaviour the rest
+  inherit.
+
+identity:
+  # Scope is resolved from the authenticated principal's directory keys before
+  # any tool in this file runs. No tool below accepts a parameter that could
+  # influence that resolution, and the validator enforces it.
+  scope_source: server
+  policy_keys: [oid, tid]
+  notes: >-
+    oid and tid are immutable in Entra ID. A policy keyed to a UPN or a mail
+    address breaks the day someone changes their name and, worse, silently
+    grants access when an address is recycled.
+
+tools:
+  - name: customer_get_caller_context
+    title: Describe the caller
+    summary: >-
+      Return the caller's own persona, roles and the regions their scope covers.
+      Intended so an agent can explain to a user why a result set looks the way
+      it does, without the agent having to guess.
+    side_effect: read
+    data_classification: internal
+    required_roles: [customer.read, hr.read, retail.read, travel.read, ops.read, support.read]
+    parameters:
+      type: object
+      additionalProperties: false
+      properties: {}
+      required: []
+    returns:
+      type: object
+      description: The caller's persona, granted roles and in-scope regions.
+    examples:
+      - description: An EMEA people partner asks who they are.
+        arguments: {}
+
+  - name: customer_lookup
+    title: Look up a customer
+    summary: >-
+      Fetch one customer by canonical id. Returns nothing when the customer is
+      outside the caller's scope, using the same response as a customer that does
+      not exist.
+    side_effect: read
+    data_classification: personal
+    required_roles: [customer.read]
+    parameters:
+      type: object
+      additionalProperties: false
+      properties:
+        customer_id:
+          type: string
+          description: Canonical customer identifier, for example CUST-00042.
+          pattern: '^CUST-\d{5}$'
+      required: [customer_id]
+    returns:
+      type: object
+      description: The customer record, or null when not visible.
+    examples:
+      - description: Retrieve a single customer by id.
+        arguments: {customer_id: CUST-00001}
+
+  - name: customer_search
+    title: Search customers
+    summary: >-
+      List customers matching business filters. Results are always confined to
+      the caller's scope; a filter can narrow that set but never widen it.
+    side_effect: read
+    data_classification: personal
+    required_roles: [customer.read]
+    parameters:
+      type: object
+      additionalProperties: false
+      properties:
+        segment:
+          type: string
+          description: Commercial segment, for example Enterprise or Public Sector.
+        region:
+          type: string
+          description: >-
+            Business region to narrow to. Intersected with the caller's scope, so
+            asking for a region outside it returns nothing rather than an error.
+        primary_location_id:
+          type: string
+          description: Canonical location identifier the customer is served from.
+        limit:
+          type: integer
+          description: Maximum rows to return, capped server-side.
+          minimum: 1
+          maximum: 200
+      required: []
+    returns:
+      type: array
+      description: Customer records visible to the caller.
+    examples:
+      - description: Enterprise customers in the caller's scope.
+        arguments: {segment: Enterprise, limit: 10}

@@ -1,0 +1,114 @@
+capability: support
+version: 1.0.0
+title: Support cases
+summary: >-
+  Read and triage support cases for in-scope customers. This is the only
+  capability with a write, and it is deliberately narrow: an assistant may retriage
+  a case, and may not reassign one, because reassignment moves a row from one
+  person's scope into another's.
+
+  Every write lands on the generated non-production dataset. There is no
+  production connection in this layer and no code path that could acquire one.
+
+identity:
+  scope_source: server
+  policy_keys: [oid, tid]
+
+tools:
+  - name: support_lookup_case
+    title: Look up a support case
+    summary: >-
+      Fetch one case by canonical id, optionally with its notes. Notes marked
+      internal are withheld from callers without the write role, since an internal
+      note is where a colleague writes what they would not say to the customer.
+    side_effect: read
+    data_classification: internal
+    required_roles: [support.read]
+    parameters:
+      type: object
+      additionalProperties: false
+      properties:
+        case_id:
+          type: string
+          description: Canonical case identifier, for example CASE-00042.
+          pattern: '^CASE-\d{5}$'
+        include_notes:
+          type: boolean
+          description: Include case notes the caller is entitled to see. Defaults to false.
+      required: [case_id]
+    returns:
+      type: object
+      description: The case record, optionally with visible notes.
+    examples:
+      - description: Read one case with its notes.
+        arguments: {case_id: CASE-00001, include_notes: true}
+
+  - name: support_search_cases
+    title: Search support cases
+    summary: List cases for in-scope customers, filtered by status, severity, product or owner.
+    side_effect: read
+    data_classification: internal
+    required_roles: [support.read]
+    parameters:
+      type: object
+      additionalProperties: false
+      properties:
+        customer_id:
+          type: string
+          description: Canonical customer identifier to restrict to one account.
+        status:
+          type: string
+          description: Case status, for example open, pending or resolved.
+        severity:
+          type: string
+          description: Case severity, for example sev-1 through sev-4.
+        assigned_employee_id:
+          type: string
+          description: Canonical employee identifier the case is assigned to.
+        product_id:
+          type: string
+          description: Canonical product identifier the case concerns.
+        limit:
+          type: integer
+          description: Maximum rows to return, capped server-side.
+          minimum: 1
+          maximum: 200
+      required: []
+    returns:
+      type: array
+      description: Cases visible to the caller.
+    examples:
+      - description: Open high-severity cases in my region.
+        arguments: {status: open, severity: sev-1}
+
+  - name: support_update_case
+    title: Retriage a support case
+    summary: >-
+      Change a case's status or severity. The case is read under scope before it
+      is written, so an id guessed for another region fails as though it did not
+      exist - and the failure is worded identically, so a guess cannot be
+      confirmed by the error message.
+    side_effect: write
+    data_classification: internal
+    required_roles: [support.write]
+    parameters:
+      type: object
+      additionalProperties: false
+      properties:
+        case_id:
+          type: string
+          description: Canonical case identifier to update.
+          pattern: '^CASE-\d{5}$'
+        status:
+          type: string
+          description: New case status.
+        severity:
+          type: string
+          description: New case severity.
+      required: [case_id]
+    returns:
+      type: object
+      description: The case as it stands after the update.
+    examples:
+      - description: Downgrade a case that turned out to be routine.
+        arguments: {case_id: CASE-00001, severity: sev-3}

@@ -1,0 +1,172 @@
+capability: travel
+version: 1.0.0
+title: Travel inventory, policy and booking simulation
+summary: >-
+  The route network and fares are company wide; policy and bookings are scoped.
+  Booking is a *simulation*: it evaluates a candidate trip against the applicable
+  regional policy and returns a decision, without writing an itinerary. An agent
+  that can spend money on a first call is an agent whose first bad call is
+  expensive.
+
+identity:
+  scope_source: server
+  policy_keys: [oid, tid]
+
+tools:
+  - name: travel_search_routes
+    title: Search routes
+    summary: >-
+      List routes between locations. The network is company wide, so an agent can
+      plan a trip that leaves its own region.
+    side_effect: read
+    data_classification: public
+    required_roles: [travel.read]
+    parameters:
+      type: object
+      additionalProperties: false
+      properties:
+        origin_location_id:
+          type: string
+          description: Canonical location identifier to depart from.
+        destination_location_id:
+          type: string
+          description: Canonical location identifier to arrive at.
+        mode:
+          type: string
+          description: Mode of travel, for example air or rail.
+        limit:
+          type: integer
+          description: Maximum rows to return, capped server-side.
+          minimum: 1
+          maximum: 200
+      required: []
+    returns:
+      type: array
+      description: Matching routes.
+    examples:
+      - description: Rail routes out of one hub.
+        arguments: {origin_location_id: LOC-001, mode: rail}
+
+  - name: travel_search_fares
+    title: Search fares
+    summary: List published fares for a route, by class and refundability.
+    side_effect: read
+    data_classification: public
+    required_roles: [travel.read]
+    parameters:
+      type: object
+      additionalProperties: false
+      properties:
+        route_id:
+          type: string
+          description: Canonical route identifier to price.
+          pattern: '^ROUTE-\d{4}$'
+        fare_class:
+          type: string
+          description: Fare class, for example economy, premium or business.
+        refundable:
+          type: integer
+          description: 1 for refundable fares only, 0 for non-refundable.
+          enum: [0, 1]
+        limit:
+          type: integer
+          description: Maximum rows to return, capped server-side.
+          minimum: 1
+          maximum: 200
+      required: []
+    returns:
+      type: array
+      description: Fares for the requested route.
+    examples:
+      - description: Refundable fares on one route.
+        arguments: {route_id: ROUTE-0001, refundable: 1}
+
+  - name: travel_get_policy
+    title: Get the applicable travel policy
+    summary: >-
+      Return the travel policy that applies to the caller. Which policy that is
+      follows from the caller's resolved region, not from an argument, so an agent
+      cannot shop for a more permissive one.
+    side_effect: read
+    data_classification: internal
+    required_roles: [travel.read]
+    parameters:
+      type: object
+      additionalProperties: false
+      properties: {}
+      required: []
+    returns:
+      type: array
+      description: Travel policies in scope for the caller.
+    examples:
+      - description: Ask which rules apply to me.
+        arguments: {}
+
+  - name: travel_simulate_booking
+    title: Simulate a booking
+    summary: >-
+      Evaluate a candidate trip against the applicable policy and return an
+      allow, allow-with-approval or refuse decision with the reasons. Writes
+      nothing. The seat inventory is decremented only in the returned projection,
+      so a simulation can be run repeatedly without drifting the dataset.
+    side_effect: simulate
+    data_classification: internal
+    required_roles: [travel.book]
+    parameters:
+      type: object
+      additionalProperties: false
+      properties:
+        route_id:
+          type: string
+          description: Canonical route identifier for the trip.
+          pattern: '^ROUTE-\d{4}$'
+        fare_id:
+          type: string
+          description: Canonical fare identifier being requested.
+          pattern: '^FARE-\d{5}$'
+        depart_on:
+          type: string
+          description: Departure date in ISO 8601 form, for example 2026-03-04.
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+        return_on:
+          type: string
+          description: Optional return date in ISO 8601 form.
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+      required: [route_id, fare_id, depart_on]
+    returns:
+      type: object
+      description: A decision, the policy applied, and the reasons behind it.
+    examples:
+      - description: Price and check a trip against policy.
+        arguments: {route_id: ROUTE-0001, fare_id: FARE-00001, depart_on: '2026-03-04'}
+
+  - name: travel_list_my_bookings
+    title: List my bookings
+    summary: >-
+      List existing bookings for travellers in scope. A coordinator sees their
+      region's travellers; nobody sees another region's itineraries.
+    side_effect: read
+    data_classification: personal
+    required_roles: [travel.read]
+    parameters:
+      type: object
+      additionalProperties: false
+      properties:
+        traveller_employee_id:
+          type: string
+          description: Canonical employee identifier to restrict to one traveller.
+        status:
+          type: string
+          description: Booking status, for example confirmed, pending or cancelled.
+        limit:
+          type: integer
+          description: Maximum rows to return, capped server-side.
+          minimum: 1
+          maximum: 200
+      required: []
+    returns:
+      type: array
+      description: Bookings visible to the caller.
+    examples:
+      - description: Pending bookings awaiting approval.
+        arguments: {status: pending}

@@ -28,6 +28,7 @@ DEFAULT_ESTIMATE = REPO_ROOT / "costs" / "v1-estimate.yaml"
 DEFAULT_CACHE = REPO_ROOT / "costs" / "price-cache.json"
 DEFAULT_DATA = REPO_ROOT / "data"
 DEFAULT_SPINE_CONFIG = DEFAULT_CONFIG / "data-spine.yaml"
+DEFAULT_TOOLBOX = DEFAULT_CONFIG / "toolbox"
 
 #: Hostnames the published site is *expected* to link to. These are Microsoft's
 #: own portals and documentation, not tenant-specific endpoints.
@@ -309,6 +310,63 @@ def cmd_data(args: argparse.Namespace) -> int:
 
 # --------------------------------------------------------------------------- #
 
+
+def cmd_toolbox(args: argparse.Namespace) -> int:
+    """Validate the tool contracts, or run the smoke client against them.
+
+    ``validate`` is a static gate and needs no dataset. ``smoke`` needs one, so
+    it builds the spine first rather than depending on whatever happens to be in
+    ``data/build`` - a smoke test that passes against a stale database is not
+    evidence of anything.
+    """
+    from .toolbox import contracts as contracts_mod
+    from .toolbox import smoke as smoke_mod
+
+    contracts_dir = DEFAULT_TOOLBOX
+
+    # Load once, keeping the valid contracts even when a sibling file is broken,
+    # so one bad contract reports as one finding rather than hiding the rest.
+    loaded, findings = contracts_mod.load_contracts_reporting(contracts_dir)
+    findings = contracts_mod.validate_loaded_contracts(loaded, findings)
+
+    for contract in loaded:
+        print(f"{contract.capability} v{contract.version}: {len(contract.tools)} tool(s)")
+
+    tool_count = sum(len(contract.tools) for contract in loaded)
+    print(f"contracts: {len(findings)} finding(s) across {len(loaded)} capability file(s), {tool_count} tool(s)")
+    for finding in findings[:20]:
+        print(f"  {finding}", file=sys.stderr)
+    if findings:
+        print("\nFAIL: a tool contract violates an invariant.", file=sys.stderr)
+        return 1
+
+    if args.action == "validate":
+        print("\nPASS: every tool contract resolves scope server-side and exposes business filters only.")
+        return 0
+
+    from .data import build as build_mod
+
+    result = build_mod.build(
+        config_path=DEFAULT_SPINE_CONFIG,
+        seed_dir=DEFAULT_DATA / "seed",
+        out_dir=Path(args.out),
+        fixtures_dir=DEFAULT_DATA / "fixtures",
+    )
+    smoke = smoke_mod.run_smoke(result.root / "contoso.db", contracts_dir)
+    for line in smoke.lines:
+        print(line)
+
+    print(f"\ntools exercised: {len(smoke.tools_exercised)}")
+    if smoke.ok():
+        print("\nPASS: the same prompt returned disjoint rows for two principals, "
+              "and an unknown principal was refused.")
+        return 0
+    print("\nFAIL: the smoke client did not demonstrate scope isolation.", file=sys.stderr)
+    return 1
+
+
+# --------------------------------------------------------------------------- #
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="foundry", description=__doc__)
     parser.add_argument("--internal", default=str(DEFAULT_INTERNAL), help="directory for identifier-bearing evidence")
@@ -356,6 +414,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-presidio", action="store_true", help="skip the optional Presidio pass")
     p.set_defaults(func=cmd_data)
 
+    p = sub.add_parser("toolbox", help="validate the tool contracts and smoke-test them against the data spine")
+    p.add_argument(
+        "action",
+        choices=("validate", "smoke"),
+        help="validate checks the contract invariants; smoke rebuilds the spine and calls tools as three personas",
+    )
+    p.add_argument("--out", default=str(DEFAULT_DATA / "build"), help="where the smoke run builds its dataset")
+    p.set_defaults(func=cmd_toolbox)
+
     return parser
 
 def main(argv: list[str] | None = None) -> int:
@@ -367,6 +434,20 @@ def main(argv: list[str] | None = None) -> int:
     except (costs_mod.CostModelError, PermissionError, KeyError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
+    except Exception as exc:  # noqa: BLE001 - see comment
+        # A refused tool call is an outcome, not a crash. Scope violations,
+        # unknown principals, suppressed cohorts and contract errors all reach
+        # here, and a stack trace would bury the one line that says why. The
+        # exception type is named in the message so the reason stays legible.
+        from .toolbox.contracts import ContractError
+        from .toolbox.identity import UnknownPrincipalError
+        from .toolbox.repository import CohortTooSmallError, ScopeViolationError
+        from .toolbox.tools import ToolError
+
+        if isinstance(exc, (ContractError, UnknownPrincipalError, CohortTooSmallError, ScopeViolationError, ToolError)):
+            print(f"error ({type(exc).__name__}): {exc}", file=sys.stderr)
+            return 2
+        raise
 
 
 if __name__ == "__main__":  # pragma: no cover
