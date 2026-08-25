@@ -17,9 +17,9 @@ version: 1
 
 resource_group: rg-contoso-agents
 
-# Phase 0 asserts the boundary is clean. Adopting a resource group this project
-# did not create is forbidden; flipping this to true requires a reviewed change.
-allow_existing_resource_group: false
+# Later deployments may reuse only this project's own group. The live gate proves
+# ownership tags and the complete resource inventory before accepting it.
+allow_existing_resource_group: true
 
 tags:
   project: contoso-agents
@@ -32,52 +32,103 @@ tags:
 resources:
   - name: foundry-account
     kind: Microsoft.CognitiveServices/accounts
-    scope: providers/Microsoft.CognitiveServices/accounts/contoso-foundry
-  - name: foundry-project
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry
+  - name: travel-project
     kind: Microsoft.CognitiveServices/accounts/projects
-    scope: providers/Microsoft.CognitiveServices/accounts/contoso-foundry/projects/contoso-agents
-  - name: apim-gateway
-    kind: Microsoft.ApiManagement/service
-    scope: providers/Microsoft.ApiManagement/service/contoso-agents-apim
-  - name: container-apps-env
-    kind: Microsoft.App/managedEnvironments
-    scope: providers/Microsoft.App/managedEnvironments/contoso-agents-env
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/projects/travel
+  - name: support-project
+    kind: Microsoft.CognitiveServices/accounts/projects
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/projects/support
+  - name: research-project
+    kind: Microsoft.CognitiveServices/accounts/projects
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/projects/research
+  - name: platform-project
+    kind: Microsoft.CognitiveServices/accounts/projects
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/projects/platform
   - name: log-analytics
     kind: Microsoft.OperationalInsights/workspaces
     scope: providers/Microsoft.OperationalInsights/workspaces/contoso-agents-logs
   - name: app-insights
     kind: microsoft.insights/components
     scope: providers/microsoft.insights/components/contoso-agents-insights
+  - name: app-insights-failure-anomalies
+    kind: Microsoft.AlertsManagement/smartDetectorAlertRules
+    scope: providers/Microsoft.AlertsManagement/smartDetectorAlertRules/*contoso-agents-insights
+  - name: key-vault
+    kind: Microsoft.KeyVault/vaults
+    scope: providers/Microsoft.KeyVault/vaults/contoso-agents-kv-*
+  - name: storage
+    kind: Microsoft.Storage/storageAccounts
+    scope: providers/Microsoft.Storage/storageAccounts/contosoagents*
+  - name: container-registry
+    kind: Microsoft.ContainerRegistry/registries
+    scope: providers/Microsoft.ContainerRegistry/registries/contosoagents*
+  - name: action-group
+    kind: Microsoft.Insights/actionGroups
+    scope: providers/Microsoft.Insights/actionGroups/contoso-agents-alerts
+  - name: monthly-budget
+    kind: Microsoft.Consumption/budgets
+    scope: providers/Microsoft.Consumption/budgets/contoso-agents-monthly
 
 # Identities. All are created inside the boundary. Reusing any pre-existing
 # identity is rejected by the `plan:no-reuse` check.
 identities:
   - name: agent-runtime-identity
     kind: Microsoft.ManagedIdentity/userAssignedIdentities
-    scope: providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-contoso-agent-runtime
+    scope: providers/Microsoft.ManagedIdentity/userAssignedIdentities/contoso-agents-runtime
+    reuse_existing: false
+  - name: github-deploy-identity
+    kind: Microsoft.ManagedIdentity/userAssignedIdentities
+    scope: providers/Microsoft.ManagedIdentity/userAssignedIdentities/contoso-agents-github-deploy
     reuse_existing: false
 
 # Role assignments. Every scope is inside the resource group; nothing is granted
 # at subscription or management-group level.
 role_assignments:
   - name: runtime-reads-foundry
-    role: Cognitive Services User
+    role: Foundry User
     principal: agent-runtime-identity
-    scope: providers/Microsoft.CognitiveServices/accounts/contoso-foundry
-  - name: runtime-writes-telemetry
-    role: Monitoring Metrics Publisher
-    principal: agent-runtime-identity
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry
+  - name: deploy-contributor
+    role: Contributor
+    principal: github-deploy-identity
+    scope: .
+  - name: deploy-rbac-administrator
+    role: Role Based Access Control Administrator
+    principal: github-deploy-identity
+    scope: .
+  - name: travel-reads-logs
+    role: Log Analytics Reader
+    principal: travel-project
     scope: providers/microsoft.insights/components/contoso-agents-insights
-
-# Diagnostic settings must land in this project's own workspace, never in a
-# shared or pre-existing one.
-diagnostic_settings:
-  - name: apim-diagnostics
-    target_workspace: log-analytics
-    scope: providers/Microsoft.ApiManagement/service/contoso-agents-apim
-  - name: container-apps-diagnostics
-    target_workspace: log-analytics
-    scope: providers/Microsoft.App/managedEnvironments/contoso-agents-env
+  - name: travel-reads-monitoring-data
+    role: Privileged Monitoring Data Reader
+    principal: travel-project
+    scope: providers/microsoft.insights/components/contoso-agents-insights
+  - name: support-reads-logs
+    role: Log Analytics Reader
+    principal: support-project
+    scope: providers/microsoft.insights/components/contoso-agents-insights
+  - name: support-reads-monitoring-data
+    role: Privileged Monitoring Data Reader
+    principal: support-project
+    scope: providers/microsoft.insights/components/contoso-agents-insights
+  - name: research-reads-logs
+    role: Log Analytics Reader
+    principal: research-project
+    scope: providers/microsoft.insights/components/contoso-agents-insights
+  - name: research-reads-monitoring-data
+    role: Privileged Monitoring Data Reader
+    principal: research-project
+    scope: providers/microsoft.insights/components/contoso-agents-insights
+  - name: platform-reads-logs
+    role: Log Analytics Reader
+    principal: platform-project
+    scope: providers/microsoft.insights/components/contoso-agents-insights
+  - name: platform-reads-monitoring-data
+    role: Privileged Monitoring Data Reader
+    principal: platform-project
+    scope: providers/microsoft.insights/components/contoso-agents-insights
 
 # Teardown. Deleting the resource group removes everything above in one action,
 # which is the point of keeping the blast radius to a single group.

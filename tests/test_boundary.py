@@ -148,3 +148,64 @@ class TestProvisioningGate:
         report = boundary.check_plan(plan(), expected_resource_group=RG)
         result = boundary.ensure_resource_group(report, location="northcentralus", tags={"env": "demo"})
         assert "dry" in result.lower() or "would" in result.lower()
+
+
+class TestExistingGroupOwnership:
+    OWNERSHIP_TAGS = {
+        "project": "contoso-agents",
+        "managed-by": "microsoft-foundry-demo",
+        "boundary": RG,
+    }
+
+    @staticmethod
+    def _patch_live(monkeypatch, *, tags, resources):
+        monkeypatch.setattr(
+            boundary.azure_cli,
+            "run",
+            lambda _args: [{"name": RG, "tags": tags}],
+        )
+        monkeypatch.setattr(
+            boundary.azure_cli,
+            "try_run",
+            lambda _args, **_kwargs: resources,
+        )
+
+    def owned_plan(self):
+        return plan(
+            allow_existing_resource_group=True,
+            tags=self.OWNERSHIP_TAGS,
+            resources=[
+                {
+                    "name": "foundry",
+                    "scope": "providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry",
+                }
+            ],
+        )
+
+    def test_accepts_only_matching_tags_and_declared_resources(self, monkeypatch):
+        resources = [{
+            "id": (
+                "/subscriptions/redacted/resourceGroups/rg-contoso-agents/providers/"
+                "Microsoft.CognitiveServices/accounts/contoso-agents-foundry"
+            )
+        }]
+        self._patch_live(monkeypatch, tags=self.OWNERSHIP_TAGS, resources=resources)
+        report = boundary.check_live(boundary.check_plan(self.owned_plan()), self.owned_plan())
+        assert report.ok
+
+    @pytest.mark.parametrize("tags", [{}, {"boundary": RG}, {"project": "someone-else"}])
+    def test_rejects_missing_or_wrong_ownership_tags(self, monkeypatch, tags):
+        self._patch_live(monkeypatch, tags=tags, resources=[])
+        report = boundary.check_live(boundary.check_plan(self.owned_plan()), self.owned_plan())
+        assert "live:target-ownership-tags" in failed_checks(report)
+
+    def test_rejects_an_unexpected_resource(self, monkeypatch):
+        resources = [{
+            "id": (
+                "/subscriptions/redacted/resourceGroups/rg-contoso-agents/providers/"
+                "Microsoft.Storage/storageAccounts/not-declared"
+            )
+        }]
+        self._patch_live(monkeypatch, tags=self.OWNERSHIP_TAGS, resources=resources)
+        report = boundary.check_live(boundary.check_plan(self.owned_plan()), self.owned_plan())
+        assert "live:declared-resource-inventory" in failed_checks(report)

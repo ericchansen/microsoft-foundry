@@ -16,6 +16,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import Any
 
@@ -195,17 +196,51 @@ def check_live(report: BoundaryReport, plan: dict[str, Any]) -> BoundaryReport:
     report.target_exists = report.resource_group in names
 
     report.checks_run.append("live:target-not-adopted")
-    if report.target_exists and not plan.get("allow_existing_resource_group", False):
-        resources = azure_cli.try_run(
-            ["resource", "list", "-g", report.resource_group], default=[]
-        ) or []
-        if resources:
+    if report.target_exists:
+        target_group = next(g for g in groups if str(g.get("name")) == report.resource_group)
+        expected_tags = plan.get("tags", {}) or {}
+        actual_tags = target_group.get("tags", {}) or {}
+        mismatched_tags = {
+            key: {"expected": value, "actual": actual_tags.get(key)}
+            for key, value in expected_tags.items()
+            if actual_tags.get(key) != value
+        }
+        if mismatched_tags:
+            report.fail(
+                "live:target-ownership-tags",
+                report.resource_group,
+                f"ownership tags do not match the plan: {mismatched_tags}",
+            )
+
+        resources = azure_cli.try_run(["resource", "list", "-g", report.resource_group], default=[]) or []
+        if not plan.get("allow_existing_resource_group", False):
             report.fail(
                 "live:target-not-adopted",
                 report.resource_group,
-                f"already contains {len(resources)} resource(s) and the plan does not set "
-                "allow_existing_resource_group. Refusing to adopt a resource group this project did not create.",
+                "already exists and the plan does not permit a previously verified project-owned group",
             )
+        else:
+            declared_scopes = [
+                str(entry.get("scope", "")).lower()
+                for section, entry in _iter_scoped_entries(plan)
+                if section in {"resources", "identities"}
+            ]
+            marker = f"/resourcegroups/{report.resource_group.lower()}/"
+            unexpected: list[str] = []
+            for resource in resources:
+                resource_id = str(resource.get("id", "")).lower()
+                if marker not in resource_id:
+                    unexpected.append(resource_id or str(resource.get("name", "<unnamed>")))
+                    continue
+                relative_scope = resource_id.split(marker, maxsplit=1)[1]
+                if not any(fnmatchcase(relative_scope, pattern) for pattern in declared_scopes):
+                    unexpected.append(relative_scope)
+            if unexpected:
+                report.fail(
+                    "live:declared-resource-inventory",
+                    report.resource_group,
+                    f"contains resources not declared by the ownership plan: {sorted(unexpected)}",
+                )
     return report
 
 

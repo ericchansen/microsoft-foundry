@@ -1,0 +1,117 @@
+name: infrastructure
+
+on:
+  pull_request:
+    paths:
+      - "infra/**"
+      - "tests/test_infrastructure.py"
+      - ".github/workflows/infra.yml"
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Run a boundary-scoped what-if or deployment
+        required: true
+        type: choice
+        options:
+          - what-if
+          - deploy
+      confirm_resource_group:
+        description: Type rg-contoso-agents to authorize the selected operation
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: infrastructure-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Bicep lint, build, and contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install project
+        run: pip install -e ".[dev]"
+
+      - name: Install Bicep
+        run: az bicep install
+
+      - name: Enforce ownership boundary
+        run: foundry boundary --no-live
+
+      - name: Lint and build without tracked ARM output
+        run: |
+          az bicep lint --file infra/main.bicep
+          az bicep build --file infra/main.bicep --stdout >/dev/null
+          test ! -f infra/main.json
+
+      - name: Infrastructure contracts
+        run: pytest -q tests/test_infrastructure.py
+
+  azure:
+    name: ${{ inputs.operation }} protected environment
+    if: github.event_name == 'workflow_dispatch'
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: contoso-agents
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RESOURCE_GROUP: rg-contoso-agents
+      LOCATION: northcentralus
+      BUDGET_CONTACT_EMAIL: ${{ vars.BUDGET_CONTACT_EMAIL }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install project
+        run: pip install -e ".[dev]"
+
+      - name: Require explicit boundary confirmation
+        run: |
+          test "${{ inputs.confirm_resource_group }}" = "$RESOURCE_GROUP"
+          test -n "$BUDGET_CONTACT_EMAIL"
+
+      - name: Azure login with workload identity federation
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Verify owned resource group
+        run: |
+          test "$(az group show --name "$RESOURCE_GROUP" --query tags.boundary -o tsv)" = "$RESOURCE_GROUP"
+
+      - name: What-if
+        if: inputs.operation == 'what-if'
+        run: |
+          az deployment group what-if \
+            --resource-group "$RESOURCE_GROUP" \
+            --template-file infra/main.bicep \
+            --parameters infra/main.bicepparam
+
+      - name: Deploy
+        if: inputs.operation == 'deploy'
+        run: |
+          az deployment group create \
+            --name "telemetry-${GITHUB_RUN_ID}" \
+            --resource-group "$RESOURCE_GROUP" \
+            --template-file infra/main.bicep \
+            --parameters infra/main.bicepparam
