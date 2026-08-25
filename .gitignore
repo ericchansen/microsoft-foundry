@@ -26,6 +26,19 @@ build/
 reports/
 costs/price-cache.json
 
+# ---------------------------------------------------------------------------
+# Generated data.
+# `data/build/` is rebuilt from `data/seed/` on demand and must never be
+# committed: a committed dataset can only ever be stale, and a stale dataset is
+# worse than none because agents would answer from it confidently.
+# `data/build.lock.json` IS committed — it is a lock file, not output: the
+# assertion CI compares a fresh rebuild against.
+# `data/external/cache/` holds third-party corpora fetched by pinned scripts.
+# Their licences do not permit redistribution, so they stay out of the tree.
+# ---------------------------------------------------------------------------
+data/build/
+data/external/cache/
+
 # Python
 __pycache__/
 *.py[cod]

@@ -1,0 +1,121 @@
+# Synthetic principals, and the scope each one is allowed to read.
+#
+# WHY THIS FILE EXISTS
+# --------------------
+# A request's scope is resolved on the server, from the signed-in principal. It
+# is never read from a prompt, a tool argument or a header a caller controls.
+# This file is the fixture stand-in for that lookup: in Azure the same mapping
+# would come from a directory group or an entitlement store keyed on the same
+# immutable claims.
+#
+# WHY THE KEYS ARE NOT GUIDS
+# --------------------------
+# In Microsoft Entra ID the immutable policy keys are the `oid` (object ID) and
+# `tid` (tenant ID) claims, both GUIDs. Those are the claims the contract names,
+# because they are the only two that survive a rename, a mailbox move or a
+# domain change. But a real GUID in a public repository is indistinguishable
+# from a leaked one, and this project's scanner rightly refuses to publish
+# either. So the fixtures use opaque non-GUID keys of the same shape-agnostic
+# kind. The contract field is still `oid`/`tid`; only the value is synthetic.
+#
+# WHY PERSONAS ARE SELECTED, NOT PINNED
+# -------------------------------------
+# Each persona names the *kind* of employee it is, and the generator resolves it
+# against the roster deterministically. Pinning `EMP-0042` would silently point
+# at a different person the first time a volume changed; a selector cannot.
+
+tenant_key: TID-CONTOSO-01
+
+principals:
+  # ---------------------------------------------------------------------- #
+  # The money shot. Two people with the same job, the same role grants and
+  # the same tooling, who must never be able to see each other's rows. Every
+  # HR scope test in this repository is ultimately about these two.
+  # ---------------------------------------------------------------------- #
+  - principal_oid: OID-EMEA-HRBP-01
+    persona: EMEA People Partner
+    roles: [hr.read, hr.aggregate]
+    scope_regions: [EMEA]
+    select:
+      region: EMEA
+      department: People Team
+      rank: 0
+
+  - principal_oid: OID-APAC-HRBP-01
+    persona: APAC People Partner
+    roles: [hr.read, hr.aggregate]
+    scope_regions: [APAC]
+    select:
+      region: APAC
+      department: People Team
+      rank: 0
+
+  # Deliberately wider, to prove the filter is data-driven rather than a
+  # hard-coded "one region per caller" assumption.
+  - principal_oid: OID-GLOBAL-HRDIR-01
+    persona: Global People Director
+    roles: [hr.read, hr.aggregate]
+    scope_regions: [AMER, EMEA, APAC]
+    select:
+      region: AMER
+      department: People Team
+      rank: 0
+
+  # ---------------------------------------------------------------------- #
+  # Non-HR personas. These exist so the negative tests are about a real
+  # caller being refused, not about an empty database.
+  # ---------------------------------------------------------------------- #
+  - principal_oid: OID-AMER-SUPLEAD-01
+    persona: Americas Support Lead
+    roles: [support.read, support.write, customer.read, retail.read]
+    scope_regions: [AMER]
+    select:
+      region: AMER
+      department: Customer Support
+      rank: 0
+
+  - principal_oid: OID-APAC-FIELDENG-01
+    persona: APAC Field Engineer
+    roles: [ops.read, travel.read, travel.book]
+    scope_regions: [APAC]
+    select:
+      region: APAC
+      department: Field Operations
+      rank: 0
+
+  - principal_oid: OID-EMEA-TRAVEL-01
+    persona: EMEA Travel Coordinator
+    roles: [travel.read, travel.book, customer.read]
+    scope_regions: [EMEA]
+    select:
+      region: EMEA
+      department: Corporate Travel
+      rank: 0
+
+  - principal_oid: OID-AMER-PLANNER-01
+    persona: Americas Supply Planner
+    roles: [retail.read, order.read, customer.read]
+    scope_regions: [AMER]
+    select:
+      region: AMER
+      department: Supply Chain
+      rank: 0
+
+  # A signed-in employee with no HR grant at all. Asking the HR tools anything
+  # must fail on authorisation, not return an empty list: "no rows" and "not
+  # allowed" are different answers and an agent will paraphrase them
+  # differently.
+  - principal_oid: OID-EMEA-CONTRACTOR-01
+    persona: EMEA Contract Field Engineer
+    roles: [ops.read]
+    scope_regions: [EMEA]
+    select:
+      region: EMEA
+      department: Field Operations
+      rank: 1
+
+# Principals used only by negative tests. They are never written to the
+# identities table, so resolving one exercises the fail-closed path.
+unknown_principals_for_tests:
+  - OID-NOT-PROVISIONED-01
+  - OID-DEPROVISIONED-99

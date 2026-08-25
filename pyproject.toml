@@ -26,6 +26,15 @@ docs = [
     "mkdocs-material>=9.5.49,<10",
     "pymdown-extensions>=10.14,<11",
 ]
+# Microsoft Presidio is a deep PII detector, and a heavy one: it pulls spaCy and
+# a language model into a project that otherwise runs on PyYAML and requests.
+# It earns its place as an *optional* second opinion over free text, not as a
+# requirement. The privacy gate's primary defence is the closed-vocabulary check,
+# which needs no model and cannot be fooled by a detector's recall.
+pii = [
+    "presidio-analyzer>=2.2.355,<3",
+    "spacy>=3.7,<4",
+]
 
 [project.scripts]
 foundry = "contoso_foundry.cli:main"

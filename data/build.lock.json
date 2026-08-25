@@ -1,0 +1,126 @@
+{
+  "artifacts": {
+    "csv/customers.csv": {
+      "bytes": 24839,
+      "rows": 200,
+      "sha256": "069602fc5af6055b975b136e10cd5198c89984f4f661b2683fa035f4154496b3"
+    },
+    "csv/employees.csv": {
+      "bytes": 46361,
+      "rows": 300,
+      "sha256": "ea319d62e0d48d543744c92c6b2e8bacf68d97e197d57bce3dd0b0aa2d6912ea"
+    },
+    "csv/hr_policies.csv": {
+      "bytes": 1705,
+      "rows": 8,
+      "sha256": "62bbd23bf0586bf03cc6691ca16132dd6752efd7cb89174851464a361f2bc0ad"
+    },
+    "csv/identities.csv": {
+      "bytes": 879,
+      "rows": 8,
+      "sha256": "afaf11d2ec9890a296b3f794df00a278fc96f7fc7bff55c2e64a4ed31e5ca811"
+    },
+    "csv/invoices.csv": {
+      "bytes": 26967,
+      "rows": 329,
+      "sha256": "ddc5206e63197f26fb74f69f96f909a4a90f813f9d15576fe564de834bb588db"
+    },
+    "csv/locations.csv": {
+      "bytes": 1215,
+      "rows": 12,
+      "sha256": "45e8566f48f73de6be3a6ceaa62b702d48b13bc317d349b5e13d43ba1650dbd6"
+    },
+    "csv/order_lines.csv": {
+      "bytes": 51450,
+      "rows": 1000,
+      "sha256": "183992568cd2393e88261f5782337180ebf681a501bef62bc125c2caa26e661e"
+    },
+    "csv/orders.csv": {
+      "bytes": 28503,
+      "rows": 400,
+      "sha256": "70257d75a095080ff3406c2f09a3fc3659db077a75e53476aa5dc93583649840"
+    },
+    "csv/product_categories.csv": {
+      "bytes": 629,
+      "rows": 8,
+      "sha256": "32d7c6d792d8cb2b8f48c581edd5514775e8b24918fa58629ba39081cc3636e2"
+    },
+    "csv/products.csv": {
+      "bytes": 9270,
+      "rows": 120,
+      "sha256": "1b00ed7ca0c2ded67cecb707b255af17ae03f9470b9fc5b414668eca131492be"
+    },
+    "csv/stock_levels.csv": {
+      "bytes": 8612,
+      "rows": 355,
+      "sha256": "d7cffe23b743becc35bf70e25afe2643e867da7d49e4b5c436f23f367f86f594"
+    },
+    "csv/suppliers.csv": {
+      "bytes": 1109,
+      "rows": 10,
+      "sha256": "b9a24563e738f0c0db8d0c74740ea9be99cd884bf6f66f6a11c21cad66b4d96d"
+    },
+    "csv/support_case_notes.csv": {
+      "bytes": 39492,
+      "rows": 323,
+      "sha256": "7749fa1357a4c366faa7257207c3aa7e006edcd5073cd897c878c74cd40736e5"
+    },
+    "csv/support_cases.csv": {
+      "bytes": 18138,
+      "rows": 150,
+      "sha256": "52d466958f549903e878df3f351cb2546a16d971b5da840f5a6fabb19f1132e4"
+    },
+    "csv/travel_bookings.csv": {
+      "bytes": 14342,
+      "rows": 120,
+      "sha256": "7aa968e3dddcbec3000fadac4fbc5f2c233977026141114ae5e3c64cc93f8ead"
+    },
+    "csv/travel_fares.csv": {
+      "bytes": 10331,
+      "rows": 212,
+      "sha256": "1f68bf5f11909c75edde9b0e7183cb190c7776dac3d476a5086aa1dc41afd1bc"
+    },
+    "csv/travel_policies.csv": {
+      "bytes": 1377,
+      "rows": 6,
+      "sha256": "2001e301106ed893592305a58b36f4ecd2c674b364e0e864fe495570cc4446a6"
+    },
+    "csv/travel_routes.csv": {
+      "bytes": 3200,
+      "rows": 84,
+      "sha256": "a9ddb39fa8086849f787f0636a53814ebd14aaf9d272c40b769027b0b6aafeb2"
+    },
+    "csv/work_orders.csv": {
+      "bytes": 12663,
+      "rows": 100,
+      "sha256": "cb2596406fbad748aecc18826d464af24c38f36afddb21fb360df054a0e76f34"
+    }
+  },
+  "as_of": "2026-01-05",
+  "build_format_version": 1,
+  "database_dump_sha256": "823b19a8bbc91178cdce17ded63f4776b32cede607d7ab58eb9f9fac30fd7847",
+  "row_counts": {
+    "customers": 200,
+    "employees": 300,
+    "hr_policies": 8,
+    "identities": 8,
+    "invoices": 329,
+    "locations": 12,
+    "order_lines": 1000,
+    "orders": 400,
+    "product_categories": 8,
+    "products": 120,
+    "stock_levels": 355,
+    "suppliers": 10,
+    "support_case_notes": 323,
+    "support_cases": 150,
+    "travel_bookings": 120,
+    "travel_fares": 212,
+    "travel_policies": 6,
+    "travel_routes": 84,
+    "work_orders": 100
+  },
+  "seed": 20260824,
+  "spine_version": 1,
+  "total_rows": 3745
+}

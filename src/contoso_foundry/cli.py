@@ -26,6 +26,8 @@ DEFAULT_REPORTS = REPO_ROOT / "reports"
 DEFAULT_CONFIG = REPO_ROOT / "config"
 DEFAULT_ESTIMATE = REPO_ROOT / "costs" / "v1-estimate.yaml"
 DEFAULT_CACHE = REPO_ROOT / "costs" / "price-cache.json"
+DEFAULT_DATA = REPO_ROOT / "data"
+DEFAULT_SPINE_CONFIG = DEFAULT_CONFIG / "data-spine.yaml"
 
 #: Hostnames the published site is *expected* to link to. These are Microsoft's
 #: own portals and documentation, not tenant-specific endpoints.
@@ -229,6 +231,84 @@ def cmd_scan(args: argparse.Namespace) -> int:
 # --------------------------------------------------------------------------- #
 
 
+def cmd_data(args: argparse.Namespace) -> int:
+    """Build, verify or document the synthetic data spine.
+
+    ``verify`` is the one CI runs. It regenerates from the seed and compares
+    against the committed lock file, so a change to the generator that was not
+    intended shows up as a failing build rather than as a dataset nobody
+    noticed had moved.
+    """
+    from .data import build as build_mod
+    from .data import integrity as integrity_mod
+    from .data import pii as pii_mod
+    from .data import provenance as prov_mod
+
+    data_root = DEFAULT_DATA
+    manifest_path = data_root / "manifest.yaml"
+    lock_path = data_root / build_mod.LOCK_FILENAME
+
+    if args.action == "manifest":
+        manifest = prov_mod.load_manifest(manifest_path)
+        target = _write(data_root / "MANIFEST.md", prov_mod.render_markdown(manifest))
+        print(f"wrote {target}")
+        return 0
+
+    result = build_mod.build(
+        config_path=DEFAULT_SPINE_CONFIG,
+        seed_dir=data_root / "seed",
+        out_dir=Path(args.out),
+        fixtures_dir=data_root / "fixtures",
+    )
+    print(f"generated {result.lock['total_rows']} row(s) across {len(result.row_counts)} table(s) "
+          f"into {args.out}")
+
+    exit_code = 0
+
+    findings = integrity_mod.check_all(result.dataset)
+    print(f"integrity: {len(findings)} finding(s)")
+    for finding in findings[:20]:
+        print(f"  {finding}", file=sys.stderr)
+    if findings:
+        exit_code = 1
+
+    reference = yaml.safe_load((data_root / "seed" / "reference.yaml").read_text(encoding="utf-8"))
+    privacy = pii_mod.check_all(result.dataset, reference, use_presidio=not args.no_presidio)
+    detector = "presidio + deterministic" if pii_mod.presidio_available() else "deterministic only"
+    print(f"privacy ({detector}): {len(privacy)} finding(s)")
+    for finding in privacy[:20]:
+        print(f"  {finding}", file=sys.stderr)
+    if privacy:
+        exit_code = 1
+
+    manifest = prov_mod.load_manifest(manifest_path)
+    provenance = prov_mod.check_all(manifest, data_root)
+    print(f"provenance: {len(provenance)} finding(s)")
+    for finding in provenance[:20]:
+        print(f"  {finding}", file=sys.stderr)
+    if provenance:
+        exit_code = 1
+
+    if args.action == "build":
+        build_mod.write_lock(result.lock, lock_path)
+        _write(data_root / "MANIFEST.md", prov_mod.render_markdown(manifest))
+        print(f"wrote {lock_path} and {data_root / 'MANIFEST.md'}")
+    else:
+        differences = build_mod.compare_lock(build_mod.read_lock(lock_path), result.lock)
+        print(f"lock: {len(differences)} difference(s)")
+        for difference in differences[:20]:
+            print(f"  {difference}", file=sys.stderr)
+        if differences:
+            exit_code = 1
+
+    message = ("\nPASS: the data spine rebuilt exactly and every gate is clean."
+               if exit_code == 0 else "\nFAIL: the data spine did not satisfy a gate.")
+    print(message, file=sys.stderr if exit_code else sys.stdout)
+    return exit_code
+
+
+# --------------------------------------------------------------------------- #
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="foundry", description=__doc__)
     parser.add_argument("--internal", default=str(DEFAULT_INTERNAL), help="directory for identifier-bearing evidence")
@@ -265,8 +345,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("path", nargs="*", default=[str(REPO_ROOT / "site")])
     p.set_defaults(func=cmd_scan)
 
-    return parser
+    p = sub.add_parser("data", help="build and verify the synthetic Contoso data spine")
+    p.add_argument(
+        "action",
+        choices=("build", "verify", "manifest"),
+        help="build regenerates and rewrites the lock; verify rebuilds and compares; "
+             "manifest re-renders data/MANIFEST.md from data/manifest.yaml",
+    )
+    p.add_argument("--out", default=str(DEFAULT_DATA / "build"), help="where generated artifacts are written")
+    p.add_argument("--no-presidio", action="store_true", help="skip the optional Presidio pass")
+    p.set_defaults(func=cmd_data)
 
+    return parser
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)

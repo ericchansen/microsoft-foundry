@@ -1,0 +1,513 @@
+# Curated reference data for the Contoso spine.
+#
+# These rows are hand-written rather than generated because they are the parts a
+# human needs to recognise: the places Contoso operates, the fictitious companies
+# it buys from, and the policies its agents are asked about. Everything else is
+# derived from them.
+#
+# Every company name here is one of Microsoft's reserved fictitious companies.
+# Every telephone number is in the 555-01xx fiction block. See data/MANIFEST.md.
+
+regions:
+  - code: AMER
+    name: Americas
+  - code: EMEA
+    name: Europe, Middle East and Africa
+  - code: APAC
+    name: Asia Pacific
+
+locations:
+  - location_id: LOC-001
+    name: Contoso Seattle Headquarters
+    city: Seattle
+    country: United States
+    region: AMER
+    timezone: America/Los_Angeles
+    kind: headquarters
+    opened_on: "2011-03-14"
+  - location_id: LOC-002
+    name: Contoso Chicago Distribution
+    city: Chicago
+    country: United States
+    region: AMER
+    timezone: America/Chicago
+    kind: distribution
+    opened_on: "2013-07-01"
+  - location_id: LOC-003
+    name: Contoso Toronto Office
+    city: Toronto
+    country: Canada
+    region: AMER
+    timezone: America/Toronto
+    kind: office
+    opened_on: "2015-09-21"
+  - location_id: LOC-004
+    name: Contoso Sao Paulo Service Depot
+    city: Sao Paulo
+    country: Brazil
+    region: AMER
+    timezone: America/Sao_Paulo
+    kind: service_depot
+    opened_on: "2018-02-05"
+  - location_id: LOC-005
+    name: Contoso London Office
+    city: London
+    country: United Kingdom
+    region: EMEA
+    timezone: Europe/London
+    kind: office
+    opened_on: "2012-06-11"
+  - location_id: LOC-006
+    name: Contoso Dublin Support Centre
+    city: Dublin
+    country: Ireland
+    region: EMEA
+    timezone: Europe/Dublin
+    kind: support_centre
+    opened_on: "2016-01-18"
+  - location_id: LOC-007
+    name: Contoso Amsterdam Distribution
+    city: Amsterdam
+    country: Netherlands
+    region: EMEA
+    timezone: Europe/Amsterdam
+    kind: distribution
+    opened_on: "2014-04-07"
+  - location_id: LOC-008
+    name: Contoso Dubai Office
+    city: Dubai
+    country: United Arab Emirates
+    region: EMEA
+    timezone: Asia/Dubai
+    kind: office
+    opened_on: "2019-10-02"
+  - location_id: LOC-009
+    name: Contoso Singapore Office
+    city: Singapore
+    country: Singapore
+    region: APAC
+    timezone: Asia/Singapore
+    kind: office
+    opened_on: "2013-11-25"
+  - location_id: LOC-010
+    name: Contoso Tokyo Office
+    city: Tokyo
+    country: Japan
+    region: APAC
+    timezone: Asia/Tokyo
+    kind: office
+    opened_on: "2017-05-15"
+  - location_id: LOC-011
+    name: Contoso Sydney Service Depot
+    city: Sydney
+    country: Australia
+    region: APAC
+    timezone: Australia/Sydney
+    kind: service_depot
+    opened_on: "2018-08-20"
+  - location_id: LOC-012
+    name: Contoso Bengaluru Support Centre
+    city: Bengaluru
+    country: India
+    region: APAC
+    timezone: Asia/Kolkata
+    kind: support_centre
+    opened_on: "2020-03-09"
+
+suppliers:
+  - supplier_id: SUP-001
+    name: Fabrikam Components
+    country: United States
+    region: AMER
+    agreement_ref: AGR-FAB-2024
+  - supplier_id: SUP-002
+    name: Northwind Traders
+    country: United Kingdom
+    region: EMEA
+    agreement_ref: AGR-NWT-2023
+  - supplier_id: SUP-003
+    name: Adventure Works Manufacturing
+    country: United States
+    region: AMER
+    agreement_ref: AGR-AWM-2025
+  - supplier_id: SUP-004
+    name: Litware Optics
+    country: Ireland
+    region: EMEA
+    agreement_ref: AGR-LIT-2024
+  - supplier_id: SUP-005
+    name: Proseware Power Systems
+    country: Netherlands
+    region: EMEA
+    agreement_ref: AGR-PRO-2022
+  - supplier_id: SUP-006
+    name: Tailspin Toys
+    country: Australia
+    region: APAC
+    agreement_ref: AGR-TSP-2025
+  - supplier_id: SUP-007
+    name: Wingtip Instruments
+    country: Singapore
+    region: APAC
+    agreement_ref: AGR-WGT-2024
+  - supplier_id: SUP-008
+    name: Woodgrove Industrial
+    country: Canada
+    region: AMER
+    agreement_ref: AGR-WDG-2023
+  - supplier_id: SUP-009
+    name: Trey Research Instruments
+    country: Japan
+    region: APAC
+    agreement_ref: AGR-TRY-2025
+  - supplier_id: SUP-010
+    name: Lamna Safety Supply
+    country: United Arab Emirates
+    region: EMEA
+    agreement_ref: AGR-LAM-2024
+
+product_categories:
+  - category_id: CAT-01
+    name: Networking hardware
+    description: Switches, routers, access points and transceivers.
+  - category_id: CAT-02
+    name: Compute hardware
+    description: Rack servers, edge appliances and storage shelves.
+  - category_id: CAT-03
+    name: Peripherals
+    description: Displays, docks, keyboards and headsets.
+  - category_id: CAT-04
+    name: Cabling and power
+    description: Structured cabling, PDUs and uninterruptible supplies.
+  - category_id: CAT-05
+    name: Safety equipment
+    description: Personal protective equipment for depot and field work.
+  - category_id: CAT-06
+    name: Facilities consumables
+    description: Cleaning, signage and small facilities stock.
+  - category_id: CAT-07
+    name: Packaging
+    description: Cartons, pallets, void fill and labelling stock.
+  - category_id: CAT-08
+    name: Field service kits
+    description: Pre-picked toolkits issued to field engineers.
+
+travel_policies:
+  - policy_id: TPOL-AMER-01
+    region: AMER
+    title: Americas standard travel policy
+    max_fare_class: economy
+    advance_purchase_days: 14
+    requires_approval_over: 1500
+    summary: >-
+      Economy fares only for flights under six hours. Bookings made fewer than
+      fourteen days ahead need a line-manager note. Anything over 1,500 USD
+      needs written approval before ticketing.
+  - policy_id: TPOL-AMER-02
+    region: AMER
+    title: Americas field engineering travel policy
+    max_fare_class: economy_plus
+    advance_purchase_days: 3
+    requires_approval_over: 2500
+    summary: >-
+      Field engineers responding to a priority work order may book at three
+      days' notice and use economy plus on sectors over four hours.
+  - policy_id: TPOL-EMEA-01
+    region: EMEA
+    title: EMEA standard travel policy
+    max_fare_class: economy
+    advance_purchase_days: 10
+    requires_approval_over: 1200
+    summary: >-
+      Rail is the default for journeys under five hours between EMEA offices.
+      Air travel on those routes needs a documented reason.
+  - policy_id: TPOL-EMEA-02
+    region: EMEA
+    title: EMEA long-haul travel policy
+    max_fare_class: economy_plus
+    advance_purchase_days: 21
+    requires_approval_over: 3000
+    summary: >-
+      Long-haul departures from EMEA are booked at least three weeks ahead.
+      Economy plus is permitted where the flight exceeds eight hours.
+  - policy_id: TPOL-APAC-01
+    region: APAC
+    title: APAC standard travel policy
+    max_fare_class: economy
+    advance_purchase_days: 10
+    requires_approval_over: 1400
+    summary: >-
+      Economy fares within the region. Same-day returns are preferred over
+      overnight stays on sectors under three hours.
+  - policy_id: TPOL-APAC-02
+    region: APAC
+    title: APAC depot support travel policy
+    max_fare_class: economy_plus
+    advance_purchase_days: 5
+    requires_approval_over: 2200
+    summary: >-
+      Depot support travel may be booked at five days' notice. Ground transfer
+      to the depot is booked with the ticket, not expensed separately.
+
+hr_policies:
+  - hr_policy_id: HRP-GLOBAL-01
+    region: GLOBAL
+    title: Code of conduct
+    category: conduct
+    audience: all_employees
+    effective_on: "2025-01-01"
+    summary: >-
+      How Contoso expects people to behave with each other, with customers and
+      with company data. Applies everywhere without local variation.
+  - hr_policy_id: HRP-GLOBAL-02
+    region: GLOBAL
+    title: Acceptable use of AI assistants
+    category: technology
+    audience: all_employees
+    effective_on: "2025-09-01"
+    summary: >-
+      What may and may not be put into an AI assistant, and which categories of
+      answer must be verified by a human before being acted on.
+  - hr_policy_id: HRP-AMER-01
+    region: AMER
+    title: Americas leave and time off
+    category: leave
+    audience: all_employees
+    effective_on: "2025-01-01"
+    summary: >-
+      Accrual rates, carry-over limits and the notice expected before booking
+      leave for employees in the Americas.
+  - hr_policy_id: HRP-AMER-02
+    region: AMER
+    title: Americas hybrid working standard
+    category: working_pattern
+    audience: all_employees
+    effective_on: "2025-06-01"
+    summary: >-
+      The minimum number of days in a Contoso location per month, and how a
+      fully remote exception is requested and reviewed.
+  - hr_policy_id: HRP-EMEA-01
+    region: EMEA
+    title: EMEA leave and time off
+    category: leave
+    audience: all_employees
+    effective_on: "2025-01-01"
+    summary: >-
+      Statutory minimums differ by country in EMEA. This policy sets the
+      Contoso floor and points to the country annexes above it.
+  - hr_policy_id: HRP-EMEA-02
+    region: EMEA
+    title: EMEA works council consultation
+    category: employee_relations
+    audience: people_managers
+    effective_on: "2025-03-01"
+    summary: >-
+      When a change to working arrangements requires consultation, and the
+      minimum consultation window before a change takes effect.
+  - hr_policy_id: HRP-APAC-01
+    region: APAC
+    title: APAC leave and time off
+    category: leave
+    audience: all_employees
+    effective_on: "2025-01-01"
+    summary: >-
+      Accrual, public holiday substitution and carry-over rules for employees
+      in the Asia Pacific region.
+  - hr_policy_id: HRP-APAC-02
+    region: APAC
+    title: APAC on-call and shift allowance
+    category: compensation
+    audience: people_managers
+    effective_on: "2025-04-01"
+    summary: >-
+      How on-call rotations are compensated in support centres and depots, and
+      the maximum consecutive on-call weeks permitted.
+
+# Closed vocabularies for generated personal names. The PII gate asserts that
+# every person-shaped value in the built dataset is a member of the cross
+# product of these two lists, which is a stronger guarantee than pattern
+# matching: a name that is not in here cannot be in the data.
+given_names:
+  - Aria
+  - Bo
+  - Cassian
+  - Delphine
+  - Emeka
+  - Farah
+  - Gita
+  - Hallie
+  - Idris
+  - Juno
+  - Kenji
+  - Lena
+  - Mateo
+  - Nadia
+  - Otto
+  - Priya
+  - Quinn
+  - Rafael
+  - Sofia
+  - Tomas
+  - Uma
+  - Viktor
+  - Wren
+  - Zaid
+
+family_names:
+  - Ashford
+  - Blackwood
+  - Carrow
+  - Denbury
+  - Eastgate
+  - Fenwick
+  - Greaves
+  - Halloway
+  - Inglewood
+  - Jessop
+  - Kingsley
+  - Larkfield
+  - Marlowe
+  - Newbury
+  - Oakhurst
+  - Pemberton
+  - Quilling
+  - Ravensworth
+  - Stonebridge
+  - Thorne
+  - Underhill
+  - Vance
+  - Westbrook
+  - Yarrow
+
+# Customer names are assembled from these two lists. Both halves are invented,
+# so a generated customer cannot collide with a real trading name by accident.
+customer_prefixes:
+  - Alpine Vale
+  - Bramble Hill
+  - Cindervale
+  - Drift Harbour
+  - Elderbrook
+  - Foxglove
+  - Grantwood
+  - Harrowgate
+  - Ironbark
+  - Juniper Reach
+  - Kelpwater
+  - Lanternfield
+  - Mosswell
+  - Nettlebridge
+  - Orchard Bay
+  - Pinewick
+  - Quarrymoor
+  - Redsail
+  - Saltmarsh
+  - Thistledown
+  - Umberfield
+  - Verdant Row
+  - Whitecliff
+  - Yewbank
+
+customer_suffixes:
+  - Logistics
+  - Retail Group
+  - Industries
+  - Distribution
+  - Works
+  - Supply Co
+  - Holdings
+  - Partners
+
+customer_segments:
+  - enterprise
+  - midmarket
+  - public_sector
+  - small_business
+
+# Leadership sits outside the operating departments so the org chart has a
+# recognisable shape: one global lead, one director per region, one lead per
+# department per region, then individual contributors. Four levels is enough for
+# the hierarchy tools to be interesting and small enough to verify by eye.
+leadership_department: Corporate
+
+leadership_titles:
+  global: Chief Operating Officer
+  regional: Regional Director
+  department: Department Lead
+
+departments:
+  - Field Operations
+  - Customer Support
+  - Retail Operations
+  - Supply Chain
+  - Finance
+  - People Team
+  - Information Technology
+  - Corporate Travel
+
+job_titles:
+  - Field Engineer
+  - Senior Field Engineer
+  - Support Specialist
+  - Support Team Lead
+  - Retail Associate
+  - Store Manager
+  - Supply Planner
+  - Procurement Analyst
+  - Financial Analyst
+  - People Partner
+  - Systems Engineer
+  - Travel Coordinator
+
+# Product naming vocabulary, indexed by category. Deterministically combined
+# with a model number to make a catalogue that reads like a catalogue.
+product_words:
+  CAT-01: [Switch, Router, Access Point, Transceiver, Firewall]
+  CAT-02: [Rack Server, Edge Appliance, Storage Shelf, Blade Chassis]
+  CAT-03: [Display, Dock, Keyboard, Headset, Webcam]
+  CAT-04: [Patch Cable, Power Distribution Unit, Battery Backup, Cable Tray]
+  CAT-05: [Safety Helmet, High Visibility Vest, Cut Resistant Glove, Ear Defender]
+  CAT-06: [Floor Cleaner, Warning Sign, Waste Bin, Hand Sanitiser]
+  CAT-07: [Shipping Carton, Pallet Wrap, Void Fill, Label Roll]
+  CAT-08: [Fibre Splice Kit, Rack Install Kit, Diagnostic Kit, Torque Kit]
+
+product_lines:
+  - Contoso Standard
+  - Contoso Pro
+  - Contoso Ruggedised
+  - Contoso Compact
+
+support_subjects:
+  - Device will not power on after firmware update
+  - Intermittent packet loss on uplink port
+  - Replacement part shipped to the wrong depot
+  - Invoice does not match the delivered quantity
+  - Request to extend warranty on a rack server
+  - Docking station stops charging under load
+  - Damaged carton reported on delivery
+  - Access point drops clients above forty sessions
+  - Safety helmet batch missing certification label
+  - Scheduled maintenance visit needs rescheduling
+
+support_note_bodies:
+  customer:
+    - Confirmed the fault with the customer and agreed a replacement window.
+    - Shipped a like-for-like replacement unit and shared the tracking reference.
+    - Asked the customer to confirm the serial number on the rear label.
+    - Booked an engineer visit for the next available depot slot.
+    - Closed the case after the customer confirmed the fix held for a week.
+  internal:
+    - Firmware revision matches the batch flagged by the supplier.
+    - Depot stock is below reorder level, replenishment raised with supply chain.
+    - Duplicate of an earlier case from the same site, linking for trend analysis.
+    - Escalated to the field engineering lead for a second opinion.
+    - Warranty position checked against the commercial agreement before committing.
+
+work_order_tasks:
+  - Replace failed uplink transceiver
+  - Quarterly rack thermal inspection
+  - Install additional access point in loading bay
+  - Recertify uninterruptible power supply
+  - Swap damaged patch panel
+  - Commission replacement edge appliance
+  - Annual safety equipment audit
+  - Relocate depot workstation cluster
