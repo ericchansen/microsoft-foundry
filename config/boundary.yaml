@@ -190,6 +190,10 @@ role_assignments:
     role: Log Analytics Reader
     principal: sre-agent
     scope: providers/microsoft.insights/components/contoso-agents-insights
+  - name: sre-operators-use-agent
+    role: SRE Agent Standard User
+    principal: sre-operator-group
+    scope: providers/Microsoft.App/agents/contoso-agents-sre-control-plane
 
 diagnostic_settings:
   - name: approvals-platform-logs

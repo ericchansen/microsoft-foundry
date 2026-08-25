@@ -42,6 +42,7 @@ provider's location list.
 | Pricing and billing | <https://learn.microsoft.com/azure/sre-agent/pricing-billing> |
 | Infrastructure as code | <https://learn.microsoft.com/azure/sre-agent/deploy-iac> |
 | ARM resource definition | <https://learn.microsoft.com/azure/templates/microsoft.app/2026-01-01/agents> |
+| SRE Agent Standard User built-in role | <https://learn.microsoft.com/azure/role-based-access-control/built-in-roles/management-and-governance#sre-agent-standard-user> |
 | Supported regions | <https://learn.microsoft.com/azure/sre-agent/supported-regions> |
 
 Billed in Azure Agent Units. The AAU consumption rates are published; a

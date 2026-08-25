@@ -16,9 +16,16 @@ param applicationInsightsName string
 @description('Resource ID of the Log Analytics workspace backing Application Insights.')
 param logAnalyticsWorkspaceResourceId string
 
+@description('Microsoft Entra group object ID granted least-privilege data-plane access to the SRE Agent.')
+@secure()
+@minLength(36)
+@maxLength(36)
+param sreOperatorGroupObjectId string
+
 var readerRoleId = 'acdd72a7-3385-48ef-bd42-f606fba81ae7'
 var monitoringReaderRoleId = '43d0d8ad-25c7-4714-9337-8ba259a9fe05'
 var logAnalyticsReaderRoleId = '73c42c96-874c-492b-b04d-ab87d138a893'
+var sreAgentStandardUserRoleId = '2d84a65a-63b2-4343-bbb6-31105d857bc1'
 
 resource applicationInsights 'Microsoft.Insights/components@2020-02-02' existing = {
   name: applicationInsightsName
@@ -112,12 +119,16 @@ resource approvalsWorkflow 'Microsoft.Logic/workflows@2019-05-01' = {
           inputs: {
             schema: {
               type: 'object'
+              additionalProperties: false
               properties: {
                 scenario: {
                   type: 'string'
                 }
                 synthetic: {
                   type: 'boolean'
+                  enum: [
+                    true
+                  ]
                 }
               }
               required: [
@@ -126,6 +137,11 @@ resource approvalsWorkflow 'Microsoft.Logic/workflows@2019-05-01' = {
               ]
             }
           }
+          conditions: [
+            {
+              expression: '@equals(triggerBody()?[\'synthetic\'], true)'
+            }
+          ]
         }
       }
       actions: {
@@ -181,7 +197,7 @@ resource approvalsWorkflow 'Microsoft.Logic/workflows@2019-05-01' = {
                     recommendation: '@agentParameters(\'recommendation\')'
                     rationale: '@agentParameters(\'rationale\')'
                     requiresHumanApproval: true
-                    synthetic: true
+                    synthetic: '@triggerBody()?[\'synthetic\']'
                   }
                 }
               }
@@ -199,7 +215,7 @@ resource approvalsWorkflow 'Microsoft.Logic/workflows@2019-05-01' = {
             scenario: '@triggerBody()?[\'scenario\']'
             disposition: 'Human review required'
             requiresHumanApproval: true
-            synthetic: true
+            synthetic: '@triggerBody()?[\'synthetic\']'
             agentLoopCompleted: true
           }
           runAfter: {
@@ -305,6 +321,19 @@ resource sreSystemLogReader 'Microsoft.Authorization/roleAssignments@2022-04-01'
     principalId: sreAgent.identity.principalId
     principalType: 'ServicePrincipal'
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', logAnalyticsReaderRoleId)
+  }
+}
+
+resource sreOperatorStandardUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(sreAgent.id, sreOperatorGroupObjectId, sreAgentStandardUserRoleId)
+  scope: sreAgent
+  properties: {
+    principalId: sreOperatorGroupObjectId
+    principalType: 'Group'
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      sreAgentStandardUserRoleId
+    )
   }
 }
 

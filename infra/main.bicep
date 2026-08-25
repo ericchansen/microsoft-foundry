@@ -29,6 +29,12 @@ param githubEnvironment string = 'contoso-agents'
 @minLength(1)
 param budgetContactEmails array
 
+@description('Microsoft Entra group object ID granted SRE Agent Standard User on the isolated agent.')
+@secure()
+@minLength(36)
+@maxLength(36)
+param sreOperatorGroupObjectId string
+
 @description('Monthly Azure budget ceiling in USD.')
 @minValue(1)
 param monthlyBudgetUsd int = 500
@@ -165,6 +171,7 @@ module controlPlanePlatforms 'modules/control-plane-platforms.bicep' = {
     tags: tags
     applicationInsightsName: applicationInsights.name
     logAnalyticsWorkspaceResourceId: monitoring.outputs.logAnalyticsWorkspaceResourceId
+    sreOperatorGroupObjectId: sreOperatorGroupObjectId
   }
 }
 

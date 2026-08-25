@@ -136,7 +136,9 @@ def test_logic_apps_agent_loop_is_bounded_and_synthetic(infra):
     assert "Create_approval_recommendation" in infra["platforms"]
     assert "Create_synthetic_review_envelope" in infra["platforms"]
     assert "requiresHumanApproval: true" in infra["platforms"]
-    assert "synthetic: true" in infra["platforms"]
+    assert "additionalProperties: false" in infra["platforms"]
+    assert "expression: '@equals(triggerBody()?[\\'synthetic\\'], true)'" in infra["platforms"]
+    assert "synthetic: '@triggerBody()?[\\'synthetic\\']'" in infra["platforms"]
     assert "count: 5" in infra["platforms"]
 
 
@@ -146,8 +148,17 @@ def test_platforms_have_dedicated_identities_and_bounded_rbac(infra):
     assert "acdd72a7-3385-48ef-bd42-f606fba81ae7" in infra["platforms"]
     assert "43d0d8ad-25c7-4714-9337-8ba259a9fe05" in infra["platforms"]
     assert "73c42c96-874c-492b-b04d-ab87d138a893" in infra["platforms"]
+    assert "2d84a65a-63b2-4343-bbb6-31105d857bc1" in infra["platforms"]
+    assert "principalType: 'Group'" in infra["platforms"]
+    assert "scope: sreAgent" in infra["platforms"]
     assert "Contributor" not in infra["platforms"]
     assert "scope: subscription()" not in infra["platforms"]
+
+
+def test_sre_operator_group_is_supplied_at_deployment_time(infra):
+    assert "@secure()\n@minLength(36)\n@maxLength(36)\nparam sreOperatorGroupObjectId string" in infra["main"]
+    assert "readEnvironmentVariable('SRE_OPERATOR_GROUP_OBJECT_ID')" in infra["params"]
+    assert "sreOperatorGroupObjectId: sreOperatorGroupObjectId" in infra["main"]
 
 
 def test_no_compiled_arm_template_is_tracked(repo_root):

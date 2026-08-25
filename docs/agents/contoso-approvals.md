@@ -14,12 +14,16 @@ region-provided `gpt-4o-mini` model described in the
 The loop has one tool: build a recommendation containing an outcome, rationale,
 and `requiresHumanApproval: true`. The tool is a Logic Apps `Compose` action. It
 has no HTTP call, connector, Azure mutation, or secret. The agent loop is capped
-at five iterations and five minutes.
+at five iterations and five minutes. Machine verification recursively rejects
+any tool or workflow action outside the exact `Agent`, `Compose`, and `Response`
+contract, including HTTP, connector, scope, and delete-capable actions.
 
-The request contract requires both a scenario and a `synthetic` marker. The
-workflow always creates a separate synthetic human-review envelope after the
-agent loop and returns it with HTTP 202. The envelope cannot approve or mutate
-anything; it proves that the demonstration ends at a human decision point.
+The request contract requires both a scenario and the literal boolean
+`synthetic: true`. The request schema and trigger condition reject false or
+missing markers before the model or any action runs. The workflow preserves that
+validated input value in both the tool result and the separate human-review
+envelope returned with HTTP 202. The envelope cannot approve or mutate anything;
+it proves that the demonstration ends at a human decision point.
 
 ## Identity and telemetry
 

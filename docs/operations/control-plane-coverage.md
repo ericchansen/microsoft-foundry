@@ -15,6 +15,10 @@ az bicep lint --file infra\main.bicep
 az bicep build --file infra\main.bicep --stdout | Out-Null
 ```
 
+Set `SRE_OPERATOR_GROUP_OBJECT_ID` to the object ID of the dedicated Microsoft
+Entra security group whose members operate Contoso SRE. The value is a required,
+secure deployment parameter and must not be added to a tracked file.
+
 Confirm the owned resource group has no active deployment:
 
 ```powershell
@@ -59,9 +63,12 @@ fails unless:
 
 - both exact resource names and types exist;
 - ownership tags and dedicated identities match;
-- Contoso SRE's returned Application Insights application ID matches the shared
-  component, and it uses the owned resource-group scope and review-only access;
-- Contoso Approvals has an `Agent` action and a bounded synthetic tool. The
+- Contoso SRE has exactly one UAMI for actions and knowledge, exactly one managed
+  resource group, exact resource-scoped identity RBAC, an agent-scoped Standard
+  User operator group, shared Application Insights, and review-only access;
+- Contoso Approvals has an exact recursively allowlisted action graph, rejects
+  any value other than `synthetic: true` before execution, and preserves that
+  marker in its human-review result. The
   [`Microsoft.Logic/workflows@2019-05-01` resource API](https://learn.microsoft.com/azure/templates/microsoft.logic/workflows)
   does not expose a separate agentic workflow kind, so inventory verification
   uses the workflow definition rather than an unsupported resource property.
@@ -92,4 +99,5 @@ send only a fictional scenario:
 A successful response says that the synthetic agent loop completed and no
 change was executed. Its result has `requiresHumanApproval: true` and
 `synthetic: true`. Delete any local file that contains the callback URL after
-the test.
+the test. Repeat the request with `synthetic: false`; the trigger must reject it
+without starting an agent or action run.

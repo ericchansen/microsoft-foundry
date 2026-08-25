@@ -14,6 +14,7 @@ param githubEnvironment = 'contoso-agents'
 param budgetContactEmails = [
   readEnvironmentVariable('BUDGET_CONTACT_EMAIL')
 ]
+param sreOperatorGroupObjectId = readEnvironmentVariable('SRE_OPERATOR_GROUP_OBJECT_ID')
 param monthlyBudgetUsd = 500
 param tags = {
   project: 'contoso-agents'

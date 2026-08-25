@@ -26,6 +26,13 @@ change. This follows the [SRE Agent approval
 model](https://learn.microsoft.com/azure/sre-agent/overview), where proposed
 changes require human sign-off.
 
+Members of one deployment-supplied Microsoft Entra security group receive
+[SRE Agent Standard User](https://learn.microsoft.com/azure/role-based-access-control/built-in-roles/management-and-governance#sre-agent-standard-user)
+on this agent resource only. That role permits incident triage and diagnostics;
+the group receives neither SRE Agent Administrator nor a resource-group role.
+The group object ID comes from `SRE_OPERATOR_GROUP_OBJECT_ID` at deployment time
+and is never stored in tracked configuration.
+
 The deployment uses East US 2 because it is one of the currently documented
 [SRE Agent regions](https://learn.microsoft.com/azure/sre-agent/supported-regions).
 The managed workload remains the project-owned resource group; a resource does

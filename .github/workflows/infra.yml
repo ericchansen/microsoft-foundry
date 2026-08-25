@@ -75,6 +75,7 @@ jobs:
       RESOURCE_GROUP: rg-contoso-agents
       LOCATION: northcentralus
       BUDGET_CONTACT_EMAIL: ${{ vars.BUDGET_CONTACT_EMAIL }}
+      SRE_OPERATOR_GROUP_OBJECT_ID: ${{ vars.SRE_OPERATOR_GROUP_OBJECT_ID }}
     steps:
       - uses: actions/checkout@v5
 
@@ -90,6 +91,7 @@ jobs:
         run: |
           test "${{ inputs.confirm_resource_group }}" = "$RESOURCE_GROUP"
           test -n "$BUDGET_CONTACT_EMAIL"
+          test -n "$SRE_OPERATOR_GROUP_OBJECT_ID"
 
       - name: Azure login with workload identity federation
         uses: azure/login@v2
