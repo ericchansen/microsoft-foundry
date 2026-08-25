@@ -4,6 +4,10 @@ on:
   push:
     branches: ["main"]
   pull_request:
+  # Prices move independently of commits, so the cost gate also runs on a timer.
+  # The claim below is enforced by this trigger, not by good intentions.
+  schedule:
+    - cron: "17 6 * * 1"
   workflow_dispatch:
 
 permissions:
