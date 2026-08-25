@@ -111,12 +111,12 @@ So the split is:
 
 | | DEV / TEST | PROD |
 | --- | --- | --- |
-| Environment-level rich telemetry | On | **Off** |
+| Environment-level rich telemetry | On, **public preview**, synthetic sessions only | **Off** |
 | Agent-level Application Insights | Optional | On, with [conversation detail logging][agenttel] **off** |
-| Dataverse transcript saving | On | **Off** |
+| Dataverse transcript saving | **Off** | **Off** |
 | Who appears in the data | Synthetic users only | Nobody's prompts |
 
-The reason DEV and TEST can afford the rich version is that the only people
+The reason DEV and TEST can use the rich version is that the only people
 talking to those agents are synthetic. Keep it that way: the moment a real
 employee tests in DEV, the telemetry setting stops being a debugging convenience
 and starts being a collection of their prompts.

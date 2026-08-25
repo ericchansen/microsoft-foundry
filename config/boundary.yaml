@@ -142,14 +142,55 @@ teardown:
 # cannot be torn down by deleting the resource group, so they are inventoried
 # here explicitly and must be removed by hand.
 external_teardown:
-  - name: power-platform-environment
+  - name: concierge-channels-and-pins
+    system: Microsoft 365 and Microsoft Copilot Studio
+    note: >-
+      Remove every channel, tenant availability approval and pin before deleting
+      the agent. Confirm it is no longer discoverable.
+    reference: https://learn.microsoft.com/microsoft-copilot-studio/publication-add-bot-to-microsoft-teams
+  - name: concierge-connections-and-flows
     system: Power Platform
     note: >-
-      A dedicated "Contoso Agents" environment. Not created by this project's
-      automation because it is a tenant-scope mutation outside the Azure boundary.
-      Delete from the Power Platform admin centre.
+      Disable agent flows, then remove target connector connections, connection
+      references and the custom connector after checking for shared dependencies.
+    reference: https://learn.microsoft.com/power-platform/alm/connection-reference
+  - name: concierge-deployment-identity
+    system: Microsoft Entra ID and Power Platform
+    note: >-
+      Remove environment role assignments, deactivate and delete each deployment
+      application user, revoke client secrets and federated credentials, and
+      delete the deployment service principal only after no other workload uses it.
+    reference: https://learn.microsoft.com/power-platform/admin/manage-application-users
+  - name: concierge-github-deployment-configuration
+    system: GitHub Actions
+    note: >-
+      Delete Concierge deployment secrets from each GitHub environment, then
+      remove the DEV, TEST, TEST-acceptance and PROD deployment environments after
+      retained workflow evidence no longer depends on them.
+    reference: https://docs.github.com/actions/deployment/targeting-different-environments/managing-environments-for-deployment
+  - name: concierge-telemetry
+    system: Microsoft Copilot Studio and Power Platform
+    note: >-
+      Disable PROD agent telemetry, remove DEV and TEST environment telemetry
+      exports, and keep Dataverse transcript saving disabled.
+    reference: https://learn.microsoft.com/microsoft-copilot-studio/admin-transcript-controls
+  - name: concierge-capacity
+    system: Power Platform
+    note: >-
+      Remove or reassign environment-specific Copilot Credit allocations after
+      channels and flows are stopped.
+    reference: https://learn.microsoft.com/power-platform/admin/programmability-tutorial-manage-copilot-credit-allocations
+  - name: power-platform-environments
+    system: Power Platform
+    note: >-
+      Dedicated DEV, TEST and PROD environments. Not created by this project's
+      automation because they are tenant-scope mutations outside the Azure
+      boundary. Delete only after proving they hold no unrelated assets.
     reference: https://learn.microsoft.com/power-platform/admin/create-environment
-  - name: copilot-studio-agent
+  - name: concierge-solutions-and-agent
     system: Microsoft Copilot Studio
-    note: Concierge agent and any tenant-wide publication. Unpublish before deleting.
-    reference: https://learn.microsoft.com/microsoft-copilot-studio/publication-fundamentals-publish-channels
+    note: >-
+      Uninstall managed PROD then TEST solutions, remove the unmanaged DEV
+      solution last, and retain accepted and rollback artifacts for the declared
+      release retention period.
+    reference: https://learn.microsoft.com/microsoft-copilot-studio/authoring-solutions-overview

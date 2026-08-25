@@ -18,7 +18,22 @@ from . import patterns
 
 #: Extensions worth scanning. Binary assets and vendored bundles are skipped.
 TEXT_SUFFIXES = frozenset(
-    {".html", ".htm", ".md", ".markdown", ".json", ".yml", ".yaml", ".txt", ".xml", ".py", ".toml", ".cfg", ".ini"}
+    {
+        ".html",
+        ".htm",
+        ".md",
+        ".markdown",
+        ".json",
+        ".yml",
+        ".yaml",
+        ".txt",
+        ".xml",
+        ".py",
+        ".ps1",
+        ".toml",
+        ".cfg",
+        ".ini",
+    }
 )
 
 #: Paths never scanned: vendored theme bundles emitted by MkDocs Material and

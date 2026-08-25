@@ -11,11 +11,12 @@ architecture's key decisions — *which region*, *what it costs*, *what it is
 allowed to touch* — are **outputs of scripts that query live Azure APIs**, not
 assertions in a document. Anyone can re-run them.
 
-## Status: Phase 0
+## Status: Phase 6 repository scaffold
 
-Phase 0 is the decision and governance foundation. **No Azure resources have been
-provisioned.** This repository currently contains the tooling that decides and
-verifies, plus the public documentation site.
+The repository now includes the decision and governance foundation, synthetic
+data and Toolbox contracts, and a tenant-neutral Contoso Concierge ALM scaffold.
+**No Power Platform environment, Copilot Studio agent, channel, capacity
+allocation, or tenant publication has been created.**
 
 ## What is here
 
@@ -28,6 +29,8 @@ verifies, plus the public documentation site.
 | `internal/` | Identifier-bearing evidence. **Never published, never committed.** |
 | `reports/` | Generated sanitized summaries. Not committed — regenerate them. |
 | `tests/` | Unit tests. No network, no Azure login required. |
+| `solutions/` | Tenant-neutral unmanaged solution source and agent contracts. |
+| `deployment/` | Placeholder-only Power Platform deployment settings. |
 
 ## Quick start
 

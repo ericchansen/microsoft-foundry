@@ -1,0 +1,55 @@
+schema_version: 1
+suite: contoso-concierge-synthetic-delegation
+data_classification: synthetic
+
+cases:
+  - id: support-case-lookup-delegates
+    persona:
+      oid: OID-AMER-SUPLEAD-01
+      tid: TID-CONTOSO-01
+      label: Americas Support Lead
+    prompt: Summarize support case CASE-00005.
+    expect:
+      specialist: support
+      tool: support_lookup_case
+      arguments:
+        case_id: CASE-00005
+        include_notes: false
+      source_contract: config/toolbox/support.yaml
+
+  - id: emea-roster-is-scoped
+    persona:
+      oid: OID-EMEA-HRBP-01
+      tid: TID-CONTOSO-01
+      label: EMEA People Partner
+    prompt: List employees in my population.
+    expect:
+      specialist: hr
+      tool: hr_search_roster
+      arguments:
+        limit: 200
+      result_regions: [EMEA]
+
+  - id: apac-roster-is-scoped
+    persona:
+      oid: OID-APAC-HRBP-01
+      tid: TID-CONTOSO-01
+      label: APAC People Partner
+    prompt: List employees in my population.
+    expect:
+      specialist: hr
+      tool: hr_search_roster
+      arguments:
+        limit: 200
+      result_regions: [APAC]
+
+  - id: unknown-persona-fails-closed
+    persona:
+      oid: OID-UNKNOWN-01
+      tid: TID-CONTOSO-01
+      label: Unknown synthetic principal
+    prompt: List all employees.
+    expect:
+      error: unknown-principal
+      no_delegation: true
+      no_result_rows: true

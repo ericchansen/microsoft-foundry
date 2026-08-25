@@ -1,0 +1,76 @@
+name: Verify Concierge release artifact
+description: Enforce source-run, archive-digest, attestation, and solution identity
+
+inputs:
+  github-token:
+    description: GitHub token with actions and attestations read access
+    required: true
+  source-run-id:
+    description: Numeric source workflow run ID
+    required: true
+  source-sha:
+    description: Exact trusted main-branch source SHA
+    required: true
+  artifact-name:
+    description: Expected GitHub Actions artifact name
+    required: true
+  artifact-file:
+    description: Expected managed solution ZIP filename
+    required: true
+  expected-repository:
+    description: Trusted owner and repository
+    required: true
+  signer-workflow:
+    description: Trusted owner, repository, and workflow path
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Verify trusted source workflow and artifact metadata
+      id: source
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        SOURCE_RUN_ID: ${{ inputs.source-run-id }}
+        SOURCE_SHA: ${{ inputs.source-sha }}
+        ARTIFACT_NAME: ${{ inputs.artifact-name }}
+        EXPECTED_REPOSITORY: ${{ inputs.expected-repository }}
+      run: |
+        gh api "repos/$EXPECTED_REPOSITORY/actions/runs/$SOURCE_RUN_ID" \
+          > "$RUNNER_TEMP/source-run.json"
+        gh api \
+          "repos/$EXPECTED_REPOSITORY/actions/runs/$SOURCE_RUN_ID/artifacts" \
+          > "$RUNNER_TEMP/source-artifacts.json"
+        python -m contoso_foundry.concierge_alm validate-source \
+          --run-json "$RUNNER_TEMP/source-run.json" \
+          --artifacts-json "$RUNNER_TEMP/source-artifacts.json" \
+          --run-id "$SOURCE_RUN_ID" \
+          --expected-sha "$SOURCE_SHA" \
+          --expected-artifact "$ARTIFACT_NAME" \
+          --expected-repository "$EXPECTED_REPOSITORY" \
+          --github-output "$GITHUB_OUTPUT"
+    - name: Enforce archive digest, attestation, and solution identity
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        ARTIFACT_ID: ${{ steps.source.outputs.artifact_id }}
+        ARTIFACT_DIGEST: ${{ steps.source.outputs.artifact_digest }}
+        ARTIFACT_FILE: ${{ inputs.artifact-file }}
+        EXPECTED_REPOSITORY: ${{ inputs.expected-repository }}
+        SIGNER_WORKFLOW: ${{ inputs.signer-workflow }}
+      run: |
+        gh api \
+          "repos/$EXPECTED_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+          > "$RUNNER_TEMP/source-artifact.zip"
+        printf '%s  %s\n' "$ARTIFACT_DIGEST" \
+          "$RUNNER_TEMP/source-artifact.zip" | sha256sum --check
+        mkdir artifacts
+        unzip -q "$RUNNER_TEMP/source-artifact.zip" -d artifacts
+        test "$(find artifacts -type f | wc -l)" -eq 1
+        python -m contoso_foundry.concierge_alm validate-package \
+          --path "artifacts/$ARTIFACT_FILE" \
+          --managed true
+        gh attestation verify "artifacts/$ARTIFACT_FILE" \
+          --repo "$EXPECTED_REPOSITORY" \
+          --signer-workflow "$SIGNER_WORKFLOW"

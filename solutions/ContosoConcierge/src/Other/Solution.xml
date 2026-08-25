@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ImportExportXml version="9.2.0.0" SolutionPackageVersion="9.2" languagecode="1033" generatedBy="CrmLive" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <SolutionManifest>
+    <UniqueName>ContosoConcierge</UniqueName>
+    <LocalizedNames>
+      <LocalizedName description="Contoso Concierge" languagecode="1033" />
+    </LocalizedNames>
+    <Descriptions>
+      <Description description="Contoso Concierge agent ALM source." languagecode="1033" />
+    </Descriptions>
+    <Version>1.0.0.0</Version>
+    <Managed>0</Managed>
+    <Publisher>
+      <UniqueName>ContosoConciergePublisher</UniqueName>
+      <LocalizedNames>
+        <LocalizedName description="Contoso Concierge" languagecode="1033" />
+      </LocalizedNames>
+      <Descriptions />
+      <CustomizationPrefix>ccs</CustomizationPrefix>
+      <CustomizationOptionValuePrefix>73000</CustomizationOptionValuePrefix>
+    </Publisher>
+    <RootComponents>
+      <RootComponent type="380" schemaName="ccs_AcceptedVersion" behavior="0" />
+      <RootComponent type="380" schemaName="ccs_FoundrySpecialistBaseUrl" behavior="0" />
+    </RootComponents>
+    <MissingDependencies />
+  </SolutionManifest>
+</ImportExportXml>

@@ -1,0 +1,35 @@
+schema_version: 1
+name: Contoso Concierge
+solution: ContosoConcierge
+status: source-contract-awaiting-authorized-dev-export
+accepted_version_variable: ccs_AcceptedVersion
+
+delegation:
+  identity_source: authenticated-caller
+  scope_source: server
+  specialists:
+    - name: support
+      foundry_project: support
+      toolbox_contract: config/toolbox/support.yaml
+      contract_version: 1.0.0
+      tools:
+        - support_lookup_case
+        - support_search_cases
+        - support_update_case
+    - name: hr
+      foundry_project: platform
+      toolbox_contract: config/toolbox/hr.yaml
+      contract_version: 1.0.0
+      tools:
+        - hr_get_policies
+        - hr_search_roster
+        - hr_count_roster
+        - hr_describe_roster
+        - hr_get_management_chain
+        - hr_aggregate_roster
+
+guardrails:
+  accept_identity_arguments: false
+  accept_scope_arguments: false
+  unknown_principal: fail-closed
+  delegation_evidence: tool-name-and-count-only

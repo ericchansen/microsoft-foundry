@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<environmentvariabledefinition schemaname="ccs_AcceptedVersion">
+  <defaultvalue>1.0.0.0</defaultvalue>
+  <description default="Accepted managed solution version shown by the /version topic.">
+    <label description="Accepted managed solution version shown by the /version topic." languagecode="1033" />
+  </description>
+  <displayname default="Accepted version">
+    <label description="Accepted version" languagecode="1033" />
+  </displayname>
+  <introducedversion>1.0.0.0</introducedversion>
+  <iscustomizable>1</iscustomizable>
+  <isrequired>1</isrequired>
+  <type>100000000</type>
+</environmentvariabledefinition>

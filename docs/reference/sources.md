@@ -101,6 +101,22 @@ a server-side default change cannot silently move the numbers.
 | Power Platform regions | <https://learn.microsoft.com/power-platform/admin/regions-overview> |
 | Creating an environment | <https://learn.microsoft.com/power-platform/admin/create-environment> |
 | Publishing channels | <https://learn.microsoft.com/microsoft-copilot-studio/publication-fundamentals-publish-channels> |
+| Copilot Studio ALM strategy | <https://learn.microsoft.com/microsoft-copilot-studio/guidance/alm> |
+| Copilot Studio solutions | <https://learn.microsoft.com/microsoft-copilot-studio/authoring-solutions-overview> |
+| Power Platform CLI solution commands | <https://learn.microsoft.com/power-platform/developer/cli/reference/solution> |
+| Install Power Platform CLI with .NET tool | <https://learn.microsoft.com/power-platform/developer/howto/install-cli-net-tool> |
+| Managed and unmanaged solution packaging | <https://learn.microsoft.com/power-platform/alm/solution-packager-tool#managed-and-unmanaged-solutions> |
+| Pipelines in Power Platform | <https://learn.microsoft.com/power-platform/alm/pipelines> |
+| Redeploy past solution versions | <https://learn.microsoft.com/power-platform/alm/redeploy-past-solution-versions> |
+| Manage Power Platform application users | <https://learn.microsoft.com/power-platform/admin/manage-application-users> |
+| Remove unused Entra application credentials | <https://learn.microsoft.com/entra/identity/monitoring-health/recommendation-remove-unused-credential-from-apps> |
+| Copilot Studio authoring permissions | <https://learn.microsoft.com/microsoft-copilot-studio/guidance/sec-gov-phase3#assign-copilot-studio-authoring-permissions-by-using-security-roles> |
+| Agent-level Application Insights telemetry | <https://learn.microsoft.com/microsoft-copilot-studio/advanced-bot-framework-composer-capture-telemetry> |
+| Environment-level Application Insights telemetry (public preview) | <https://learn.microsoft.com/microsoft-copilot-studio/advanced-environment-level-agent-telemetry> |
+| Transcript access and retention | <https://learn.microsoft.com/microsoft-copilot-studio/admin-transcript-controls> |
+| Microsoft 365 agent administration | <https://learn.microsoft.com/microsoft-365/copilot/extensibility/manage#agents-built-with-microsoft-copilot-studio> |
+| Global Reader role | <https://learn.microsoft.com/entra/identity/role-based-access-control/permissions-reference#global-reader> |
+| Copilot Credits allocation | <https://learn.microsoft.com/power-platform/admin/programmability-tutorial-manage-copilot-credit-allocations> |
 
 Copilot Studio's billing currency changed from *messages* to **Copilot Credits**.
 The USD-per-credit rate is published in the licensing guide PDF rather than on
@@ -111,6 +127,11 @@ Power Platform environments can be created in any region **except** India and
 Australia, which are restricted to tenants based in those countries. If a
 tenant's location has no matching Copilot Studio data location, data is stored in
 the United States.
+
+Environment-level Copilot Studio export to Application Insights is **public
+preview** and includes conversation, tool, and identity detail. This project
+allows it only for synthetic DEV/TEST sessions. PROD uses agent-level telemetry
+with conversation detail disabled, and Dataverse transcript saving is disabled.
 
 ## Data residency
 
@@ -135,3 +156,6 @@ the United States.
 | Material for MkDocs diagrams | <https://squidfunk.github.io/mkdocs-material/reference/diagrams/> |
 | Publishing a Material site | <https://squidfunk.github.io/mkdocs-material/publishing-your-site/> |
 | GitHub Pages custom workflows | <https://docs.github.com/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages> |
+| GitHub Actions workflow-run metadata | <https://docs.github.com/rest/actions/workflow-runs#get-a-workflow-run> |
+| GitHub Actions artifact digests | <https://docs.github.com/actions/tutorials/store-and-share-data#validating-artifacts> |
+| GitHub artifact attestations | <https://docs.github.com/actions/concepts/security/artifact-attestations> |

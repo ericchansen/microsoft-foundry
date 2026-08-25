@@ -1,0 +1,300 @@
+name: Contoso Concierge ALM
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Build or promote the pinned Concierge solution
+        required: true
+        type: choice
+        options:
+          - package
+          - import-test
+          - accept-test
+          - import-prod
+      artifact_run_id:
+        description: Trusted package run, or TEST-acceptance run for PROD
+        required: false
+        type: string
+      artifact_source_sha:
+        description: Exact 40-character main-branch SHA of the source run
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  attestations: read
+
+env:
+  PYTHONPATH: src
+  ACCEPTED_VERSION: "1.0.0.0"
+  MANAGED_ARTIFACT: "ContosoConcierge_1_0_0_0_managed.zip"
+  MANAGED_ARTIFACT_NAME: "ContosoConcierge-managed-1.0.0.0"
+  ACCEPTED_ARTIFACT_NAME: "ContosoConcierge-test-accepted-1.0.0.0"
+  SIGNER_WORKFLOW: "ericchansen/microsoft-foundry/.github/workflows/concierge-alm.yml"
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: pytest -q tests/test_concierge_alm.py
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+      - name: Restore pinned repository-local PAC CLI
+        run: dotnet tool restore
+      - name: PAC pack smoke gate
+        shell: pwsh
+        run: |
+          ./scripts/concierge-alm.ps1 `
+            -Operation Pack `
+            -ArtifactPath "$env:RUNNER_TEMP/ContosoConcierge_1_0_0_0_unmanaged.zip"
+          python -m contoso_foundry.concierge_alm validate-package `
+            --path "$env:RUNNER_TEMP/ContosoConcierge_1_0_0_0_unmanaged.zip" `
+            --managed false
+      - name: Validate promotion inputs
+        if: inputs.operation != 'package'
+        env:
+          ARTIFACT_RUN_ID: ${{ inputs.artifact_run_id }}
+          ARTIFACT_SOURCE_SHA: ${{ inputs.artifact_source_sha }}
+        run: |
+          [[ "$ARTIFACT_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$ARTIFACT_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+
+  release-source:
+    if: inputs.operation == 'package'
+    needs: contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Require an authorized complete DEV export
+        shell: pwsh
+        run: ./scripts/concierge-alm.ps1 -Operation AssertReleaseSource
+
+  package:
+    if: inputs.operation == 'package'
+    needs:
+      - contract
+      - release-source
+    runs-on: ubuntu-latest
+    environment: concierge-dev
+    permissions:
+      contents: read
+      attestations: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+      - run: dotnet tool restore
+      - name: Pack unmanaged DEV source
+        shell: pwsh
+        run: |
+          ./scripts/concierge-alm.ps1 `
+            -Operation Pack `
+            -ArtifactPath "$env:RUNNER_TEMP/ContosoConcierge_1_0_0_0_unmanaged.zip"
+      - name: Materialize protected DEV deployment settings
+        env:
+          SETTINGS_BASE64: ${{ secrets.POWER_PLATFORM_DEPLOYMENT_SETTINGS_BASE64 }}
+        run: |
+          test -n "$SETTINGS_BASE64"
+          printf '%s' "$SETTINGS_BASE64" |
+            base64 --decode > "$RUNNER_TEMP/concierge-dev.settings.json"
+      - name: Authenticate to DEV
+        env:
+          ENVIRONMENT_URL: ${{ secrets.POWER_PLATFORM_ENVIRONMENT_URL }}
+          CLIENT_ID: ${{ secrets.POWER_PLATFORM_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.POWER_PLATFORM_CLIENT_SECRET }}
+          TENANT_ID: ${{ secrets.POWER_PLATFORM_TENANT_ID }}
+        run: |
+          dotnet tool run pac auth create \
+            --environment "$ENVIRONMENT_URL" \
+            --applicationId "$CLIENT_ID" \
+            --clientSecret "$CLIENT_SECRET" \
+            --tenant "$TENANT_ID"
+      - name: Import source and export the managed release
+        run: |
+          dotnet tool run pac solution import \
+            --path "$RUNNER_TEMP/ContosoConcierge_1_0_0_0_unmanaged.zip" \
+            --settings-file "$RUNNER_TEMP/concierge-dev.settings.json"
+          mkdir -p artifacts
+          dotnet tool run pac solution export \
+            --name ContosoConcierge \
+            --path "artifacts/$MANAGED_ARTIFACT" \
+            --managed true \
+            --overwrite true
+          python -m contoso_foundry.concierge_alm validate-package \
+            --path "artifacts/$MANAGED_ARTIFACT" \
+            --managed true
+      - name: Attest managed release provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: artifacts/${{ env.MANAGED_ARTIFACT }}
+      - name: Retain immutable managed release
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.MANAGED_ARTIFACT_NAME }}
+          path: artifacts/${{ env.MANAGED_ARTIFACT }}
+          retention-days: 90
+          if-no-files-found: error
+
+  import-test:
+    if: inputs.operation == 'import-test'
+    needs: contract
+    runs-on: ubuntu-latest
+    environment: concierge-test
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+      - run: dotnet tool restore
+      - name: Verify trusted package artifact
+        uses: ./.github/actions/verify-concierge-artifact
+        with:
+          github-token: ${{ github.token }}
+          source-run-id: ${{ inputs.artifact_run_id }}
+          source-sha: ${{ inputs.artifact_source_sha }}
+          artifact-name: ${{ env.MANAGED_ARTIFACT_NAME }}
+          artifact-file: ${{ env.MANAGED_ARTIFACT }}
+          expected-repository: ${{ github.repository }}
+          signer-workflow: ${{ env.SIGNER_WORKFLOW }}
+      - name: Authenticate to TEST
+        env:
+          ENVIRONMENT_URL: ${{ secrets.POWER_PLATFORM_ENVIRONMENT_URL }}
+          CLIENT_ID: ${{ secrets.POWER_PLATFORM_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.POWER_PLATFORM_CLIENT_SECRET }}
+          TENANT_ID: ${{ secrets.POWER_PLATFORM_TENANT_ID }}
+        run: |
+          dotnet tool run pac auth create \
+            --environment "$ENVIRONMENT_URL" \
+            --applicationId "$CLIENT_ID" \
+            --clientSecret "$CLIENT_SECRET" \
+            --tenant "$TENANT_ID"
+      - name: Materialize protected TEST deployment settings
+        env:
+          SETTINGS_BASE64: ${{ secrets.POWER_PLATFORM_DEPLOYMENT_SETTINGS_BASE64 }}
+        run: |
+          test -n "$SETTINGS_BASE64"
+          printf '%s' "$SETTINGS_BASE64" |
+            base64 --decode > "$RUNNER_TEMP/concierge-test.settings.json"
+      - name: Import managed package into TEST
+        shell: pwsh
+        run: |
+          ./scripts/concierge-alm.ps1 `
+            -Operation Import `
+            -Target TEST `
+            -ArtifactPath "./artifacts/$env:MANAGED_ARTIFACT" `
+            -SettingsPath "$env:RUNNER_TEMP/concierge-test.settings.json"
+      - name: Require manual TEST runtime publication
+        run: |
+          echo "Import complete; an agent owner must Publish in Copilot Studio."
+          echo "No PROD-eligible artifact exists until accept-test passes."
+
+  accept-test:
+    if: inputs.operation == 'accept-test'
+    needs: contract
+    runs-on: ubuntu-latest
+    environment: concierge-test-acceptance
+    permissions:
+      contents: read
+      actions: read
+      attestations: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install -e .
+      - name: Verify trusted package artifact
+        uses: ./.github/actions/verify-concierge-artifact
+        with:
+          github-token: ${{ github.token }}
+          source-run-id: ${{ inputs.artifact_run_id }}
+          source-sha: ${{ inputs.artifact_source_sha }}
+          artifact-name: ${{ env.MANAGED_ARTIFACT_NAME }}
+          artifact-file: ${{ env.MANAGED_ARTIFACT }}
+          expected-repository: ${{ github.repository }}
+          signer-workflow: ${{ env.SIGNER_WORKFLOW }}
+      - name: Run synthetic TEST delegation and RLS acceptance
+        env:
+          CONCIERGE_TEST_HARNESS_URL: ${{ secrets.CONCIERGE_TEST_HARNESS_URL }}
+          CONCIERGE_TEST_HARNESS_TOKEN: ${{ secrets.CONCIERGE_TEST_HARNESS_TOKEN }}
+        run: |
+          python -m contoso_foundry.concierge_alm runtime-test \
+            --suite config/concierge/delegation-tests.yaml \
+            --url "$CONCIERGE_TEST_HARNESS_URL"
+      - name: Attest TEST-accepted package
+        uses: actions/attest@v4
+        with:
+          subject-path: artifacts/${{ env.MANAGED_ARTIFACT }}
+      - name: Retain TEST-accepted package for PROD
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ACCEPTED_ARTIFACT_NAME }}
+          path: artifacts/${{ env.MANAGED_ARTIFACT }}
+          retention-days: 90
+          if-no-files-found: error
+
+  import-prod:
+    if: inputs.operation == 'import-prod'
+    needs: contract
+    runs-on: ubuntu-latest
+    environment: concierge-prod-approval
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+      - run: dotnet tool restore
+      - name: Verify trusted TEST-accepted artifact
+        uses: ./.github/actions/verify-concierge-artifact
+        with:
+          github-token: ${{ github.token }}
+          source-run-id: ${{ inputs.artifact_run_id }}
+          source-sha: ${{ inputs.artifact_source_sha }}
+          artifact-name: ${{ env.ACCEPTED_ARTIFACT_NAME }}
+          artifact-file: ${{ env.MANAGED_ARTIFACT }}
+          expected-repository: ${{ github.repository }}
+          signer-workflow: ${{ env.SIGNER_WORKFLOW }}
+      - name: Authenticate to PROD
+        env:
+          ENVIRONMENT_URL: ${{ secrets.POWER_PLATFORM_ENVIRONMENT_URL }}
+          CLIENT_ID: ${{ secrets.POWER_PLATFORM_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.POWER_PLATFORM_CLIENT_SECRET }}
+          TENANT_ID: ${{ secrets.POWER_PLATFORM_TENANT_ID }}
+        run: |
+          dotnet tool run pac auth create \
+            --environment "$ENVIRONMENT_URL" \
+            --applicationId "$CLIENT_ID" \
+            --clientSecret "$CLIENT_SECRET" \
+            --tenant "$TENANT_ID"
+      - name: Materialize protected PROD deployment settings
+        env:
+          SETTINGS_BASE64: ${{ secrets.POWER_PLATFORM_DEPLOYMENT_SETTINGS_BASE64 }}
+        run: |
+          test -n "$SETTINGS_BASE64"
+          printf '%s' "$SETTINGS_BASE64" |
+            base64 --decode > "$RUNNER_TEMP/concierge-prod.settings.json"
+      - name: Import TEST-accepted package into PROD
+        shell: pwsh
+        run: |
+          ./scripts/concierge-alm.ps1 `
+            -Operation Import `
+            -Target PROD `
+            -ArtifactPath "./artifacts/$env:MANAGED_ARTIFACT" `
+            -SettingsPath "$env:RUNNER_TEMP/concierge-prod.settings.json"
+      - name: Preserve manual runtime and tenant gates
+        run: |
+          echo "An agent owner must Publish the PROD runtime manually."
+          echo "A Microsoft 365 administrator must approve tenant availability."
