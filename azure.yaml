@@ -5,6 +5,7 @@ requiredVersions:
   azd: ">=1.27.1"
   extensions:
     azure.ai.agents: ">=1.0.0-beta.8"
+    azure.ai.connections: ">=1.0.0-beta.4"
     azure.ai.projects: ">=1.0.0-beta.4"
 
 services:
@@ -40,6 +41,7 @@ services:
       context: .
       platform: linux/amd64
       remoteBuild: false
+    image: ${CONTOSO_SUPPORT_IMAGE}
     uses:
       - ai-project
       - contoso-support-entitlements

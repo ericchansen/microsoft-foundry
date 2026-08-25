@@ -17,8 +17,8 @@ concurrency:
 
 jobs:
   deploy:
-    name: Private build, deploy, route, and smoke
-    runs-on: [self-hosted, linux, contoso-agents-vnet]
+    name: Build, deploy, route, and smoke
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     environment: contoso-agents
     permissions:
@@ -57,7 +57,7 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Authenticate azd and configure the private deployment
+      - name: Authenticate azd and configure the deployment
         env:
           AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
           AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
@@ -72,6 +72,9 @@ jobs:
           azd env set AZURE_RESOURCE_GROUP "$AZURE_RESOURCE_GROUP"
           azd env set AZURE_LOCATION "$AZURE_LOCATION"
           azd env set CONTOSO_PRINCIPAL_MAP_JSON "$CONTOSO_PRINCIPAL_MAP_JSON"
+          azd env set CONTOSO_SUPPORT_IMAGE \
+            "registry.invalid/contoso-support@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+          azd env set AZD_AGENT_SKIP_ACR true
 
       - name: Verify live boundary before every mutation
         run: foundry boundary
@@ -79,7 +82,23 @@ jobs:
       - name: Provision only inside rg-contoso-agents
         run: azd provision --no-prompt
 
-      - name: Deploy Responses 2.0 agent from private ACR
+      - name: Build and pin the image in the shared authenticated ACR
+        run: |
+          registry_endpoint="$(azd env get-value AZURE_CONTAINER_REGISTRY_ENDPOINT)"
+          registry_name="${registry_endpoint%%.*}"
+          image_tag="$registry_endpoint/contoso-support:${GITHUB_SHA}"
+          az acr login --name "$registry_name"
+          docker build --platform linux/amd64 --tag "$image_tag" .
+          docker push "$image_tag"
+          digest="$(docker buildx imagetools inspect "$image_tag" --format '{{.Manifest.Digest}}')"
+          case "$digest" in
+            sha256:????????????????????????????????????????????????????????????????) ;;
+            *) echo "Registry returned an invalid image digest." >&2; exit 1 ;;
+          esac
+          azd env set CONTOSO_SUPPORT_IMAGE "$registry_endpoint/contoso-support@$digest"
+          azd env set AZD_AGENT_SKIP_ACR true
+
+      - name: Deploy Responses 2.0 agent from the pinned image
         run: azd deploy --no-prompt
 
       - name: Verify exact active version and exclusive route

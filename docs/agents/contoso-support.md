@@ -68,20 +68,20 @@ contract](https://learn.microsoft.com/azure/foundry/agents/concepts/azure-yaml-r
 connects to the owned `support` project, declares Responses 2.0 and uses the
 repository Bicep instead of synthesizing another resource group.
 
-The image is built for `linux/amd64`, pushed to the project-owned Premium Azure
-Container Registry, and pulled through a private endpoint. Public registry
-access is disabled. Microsoft documents private-registry support only for
-projects created after June 25, 2026; deployments must keep using an eligible
-project. `azd deploy` creates the per-agent identity and grants only `AcrPull`
-on that registry, following the
+The image is built for `linux/amd64`, pushed once to the project-owned shared
+Basic Azure Container Registry and deployed by SHA-256 digest. The registry
+endpoint is network-reachable for the build, but the images are not public:
+anonymous pull and admin credentials are disabled. The deployment identity has
+only `AcrPush` on the registry, while `azd deploy` creates the per-agent identity
+and grants only `AcrPull`, following the
 [private ACR workflow](https://learn.microsoft.com/azure/foundry/agents/how-to/deploy-hosted-agent-private-azure-container-registry)
 and [hosted-agent permission model](https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agent-permissions).
 
-An ACR with public access disabled can be built only from inside its virtual
-network. The manual deployment workflow therefore requires a self-hosted runner
-labelled `contoso-agents-vnet`; it never falls back to a public registry. All
-provisioning is preceded by the live ownership-boundary gate, so every mutation
-remains inside the owned resource group.
+The manual workflow resolves the pushed manifest digest, sets the prebuilt
+`image` reference, and rejects a malformed digest before deployment. It never
+uses a public image repository. All provisioning is preceded by the live
+ownership-boundary gate, so every mutation remains inside the owned resource
+group.
 
 ## Evidence gates
 
@@ -127,7 +127,8 @@ exposes only support, customer and catalogue reads; the shared Toolbox write
 contract remains unavailable. This demonstrates row-level authorization, not a
 durable case-management store.
 
-The [cost model](../platform/costs.md) adds live Retail Prices API meters for the
-Premium registry, private endpoint, private DNS and planned `gpt-5.4-mini`
-tokens. Hosted-agent CPU and memory have no unambiguous retail meter, so the
-model holds a non-zero pilot reserve rather than claiming that compute is free.
+The [cost model](../platform/costs.md) records the shared Basic registry once for
+the whole agent estate and assigns Support 1.5 million input and 300,000 output
+`gpt-5.4-mini` tokens per month. Hosted-agent CPU and memory have no unambiguous
+retail meter, so the model holds a non-zero $40 pilot reserve rather than
+claiming that compute is free.

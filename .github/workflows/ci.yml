@@ -57,10 +57,24 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
 
+      - uses: Azure/setup-azd@v2
+
       - name: Install hosted runtime and project
         run: |
           pip install -e ".[dev]"
           pip install -r agents/contoso-support/requirements.txt
+
+      - name: Validate unified Foundry configuration and providers
+        run: |
+          azd env new support-agent-doctor --no-prompt
+          azd env set AZD_AGENT_SKIP_ACR true
+          azd env set AZURE_AI_PROJECT_ENDPOINT https://unit.test/api/projects/support
+          azd env set FOUNDRY_PROJECT_ENDPOINT https://unit.test/api/projects/support
+          azd env set CONTOSO_PRINCIPAL_MAP_JSON '{"ci-synthetic-user":"OID-AMER-SUPLEAD-01"}'
+          azd env set CONTOSO_SUPPORT_IMAGE \
+            registry.invalid/contoso-support@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          azd env set MICROSOFT_FOUNDRY_MODEL_DEPLOYMENT_NAME support-gpt-5-4-mini
+          azd ai agent doctor --local-only
 
       - name: Deterministic scoped evaluation
         run: |

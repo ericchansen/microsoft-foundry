@@ -55,8 +55,10 @@ The model therefore holds an explicit monthly reserve against the ceiling and
 reports it as a warning on every run. When a meter is published, the reserve is
 replaced with a real lookup.
 
-Contoso Support adds live meters for its Premium private registry, private
-endpoint, private DNS zone and planned `gpt-5.4-mini` token volume. The
+Contoso Support reuses the project-owned Basic registry. Its fixed registry cost
+is modelled once for the whole agent estate rather than repeated per agent, while
+support receives an estate-wide traffic allocation of 1.5 million input and
+300,000 output `gpt-5.4-mini` tokens per month. The
 [hosted-agent deployment guidance](https://learn.microsoft.com/azure/foundry/agents/how-to/deploy-hosted-agent)
 defines CPU and memory allocations but the Retail Prices API exposes no
 unambiguous hosted-agent compute meter. The scale-to-zero pilot therefore holds

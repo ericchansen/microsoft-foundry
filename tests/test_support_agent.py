@@ -75,12 +75,14 @@ def test_unified_config_uses_current_hosted_responses_contract() -> None:
     assert "APPLICATIONINSIGHTS_CONNECTION_STRING" not in agent["env"]
     assert config["infra"] == {"provider": "bicep", "path": "./infra"}
     assert config["requiredVersions"]["extensions"]["azure.ai.agents"] == ">=1.0.0-beta.8"
+    assert config["requiredVersions"]["extensions"]["azure.ai.connections"] == ">=1.0.0-beta.4"
     assert agent["docker"] == {
         "path": "./Dockerfile",
         "context": ".",
         "platform": "linux/amd64",
         "remoteBuild": False,
     }
+    assert agent["image"] == "${CONTOSO_SUPPORT_IMAGE}"
     assert (REPO_ROOT / "Dockerfile").is_file()
     assert not (REPO_ROOT / "agents" / "contoso-support" / "Dockerfile").exists()
     assert not (REPO_ROOT / "agent.yaml").exists()
@@ -107,15 +109,22 @@ def test_container_packages_digest_checked_read_only_canonical_data() -> None:
     assert "chown 65532:65532 /var/lib/contoso-support" in dockerfile
 
 
-def test_live_workflow_uses_private_runner_and_never_supplies_identity_header() -> None:
+def test_live_workflow_pins_shared_registry_image_and_never_supplies_identity_header() -> None:
     workflow = (REPO_ROOT / ".github" / "workflows" / "support-agent.yml").read_text(encoding="utf-8")
-    assert "runs-on: [self-hosted, linux, contoso-agents-vnet]" in workflow
+    ci_workflow = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert "runs-on: ubuntu-latest" in workflow
     assert "foundry boundary" in workflow
     assert "foundry support verify-deployment" in workflow
     assert "AGENT_CONTOSO_SUPPORT_RESPONSES_ENDPOINT" in workflow
+    assert "docker push" in workflow
+    assert "buildx imagetools inspect" in workflow
+    assert "CONTOSO_SUPPORT_IMAGE" in workflow
+    assert "AZD_AGENT_SKIP_ACR true" in workflow
     assert "x-agent-user-id" not in workflow.lower()
     assert '${{ inputs.confirm_resource_group }}' not in workflow.split("run: |", maxsplit=1)[1]
     assert "cloud_RoleName == 'contoso-support'" in workflow
+    assert "azd ai agent doctor --local-only" in ci_workflow
+    assert "azd env new support-agent-doctor --no-prompt" in ci_workflow
 
 
 @pytest.mark.parametrize("raw", ["", "[]", "{", '{"bad user": "OID-AMER-SUPLEAD-01"}', '{"user": "bad"}'])

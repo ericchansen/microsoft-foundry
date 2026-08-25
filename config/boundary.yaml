@@ -63,18 +63,6 @@ resources:
   - name: container-registry
     kind: Microsoft.ContainerRegistry/registries
     scope: providers/Microsoft.ContainerRegistry/registries/contosoagents*
-  - name: registry-vnet
-    kind: Microsoft.Network/virtualNetworks
-    scope: providers/Microsoft.Network/virtualNetworks/contoso-agents-registry-vnet
-  - name: registry-private-endpoint
-    kind: Microsoft.Network/privateEndpoints
-    scope: providers/Microsoft.Network/privateEndpoints/contoso-agents-registry-endpoint
-  - name: registry-private-endpoint-nic
-    kind: Microsoft.Network/networkInterfaces
-    scope: providers/Microsoft.Network/networkInterfaces/contoso-agents-registry-endpoint-nic
-  - name: registry-private-dns
-    kind: Microsoft.Network/privateDnsZones
-    scope: providers/Microsoft.Network/privateDnsZones/privatelink.azurecr.io
   - name: support-model
     kind: Microsoft.CognitiveServices/accounts/deployments
     scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/deployments/support-gpt-5-4-mini
@@ -108,6 +96,10 @@ role_assignments:
     role: Foundry Project Manager
     principal: github-deploy-identity
     scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/projects/support
+  - name: deploy-pushes-agent-images
+    role: AcrPush
+    principal: github-deploy-identity
+    scope: providers/Microsoft.ContainerRegistry/registries/contosoagents*
   - name: deploy-contributor
     role: Contributor
     principal: github-deploy-identity

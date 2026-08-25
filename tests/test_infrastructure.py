@@ -88,15 +88,16 @@ def test_storage_requires_oauth(infra):
     assert "allowBlobPublicAccess: false" in infra["data"]
 
 
-def test_acr_is_private_and_supports_hosted_agent_images(infra):
-    assert "name: 'Premium'" in infra["data"]
+def test_shared_acr_requires_identity_and_supports_hosted_agent_images(infra):
+    assert "name: 'Basic'" in infra["data"]
     assert "adminUserEnabled: false" in infra["data"]
-    assert "publicNetworkAccess: 'Disabled'" in infra["data"]
-    assert "networkRuleBypassOptions: 'None'" in infra["data"]
-    assert "customNetworkInterfaceName: '${resourcePrefix}-registry-endpoint-nic'" in infra["data"]
+    assert "anonymousPullEnabled: false" in infra["data"]
+    assert "publicNetworkAccess: 'Enabled'" in infra["data"]
     assert "retentionPolicy:" in infra["data"]
-    assert "privateEndpoints@2025-07-01" in infra["data"]
-    assert "privateDnsZones@2024-06-01" in infra["data"]
+    assert "privateEndpoints@" not in infra["data"]
+    assert "privateDnsZones@" not in infra["data"]
+    assert "deployAcrPush" in infra["main"]
+    assert "scope: containerRegistry" in infra["main"]
 
 
 def test_support_model_deployment_is_explicit_and_pinned(infra):

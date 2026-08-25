@@ -36,6 +36,10 @@ param budgetStartDate string = utcNow('yyyy-MM-01')
 var logAnalyticsReaderRoleId = '73c42c96-874c-492b-b04d-ab87d138a893'
 var privilegedMonitoringDataReaderRoleId = 'dbc9c667-e97f-4491-aee6-90b9cf960190'
 var foundryUserRoleId = '53ca6127-db72-4b80-b1b0-d745d6d5456d'
+var acrPushRoleId = '8311e382-0749-4cb8-b61a-304f252e45ec'
+var compactPrefix = replace(resourcePrefix, '-', '')
+var uniqueness = take(uniqueString(resourceGroup().id), 8)
+var containerRegistryName = take('${compactPrefix}${uniqueness}', 50)
 
 @description('Tags applied to every resource that supports tags.')
 param tags object = {
@@ -194,6 +198,27 @@ module identities 'modules/identity.bicep' = {
   }
 }
 
+resource containerRegistry 'Microsoft.ContainerRegistry/registries@2025-11-01' existing = {
+  name: containerRegistryName
+}
+
+resource deployIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30' existing = {
+  name: '${resourcePrefix}-github-deploy'
+}
+
+resource deployAcrPush 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(containerRegistry.id, deployIdentity.id, acrPushRoleId)
+  scope: containerRegistry
+  properties: {
+    principalId: deployIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', acrPushRoleId)
+  }
+  dependsOn: [
+    identities
+  ]
+}
+
 resource monthlyBudget 'Microsoft.Consumption/budgets@2024-08-01' = {
   name: '${resourcePrefix}-monthly'
   properties: {
@@ -254,8 +279,6 @@ output storageAccountName string = secureData.outputs.storageAccountName
 output containerRegistryName string = secureData.outputs.containerRegistryName
 output containerRegistryEndpoint string = secureData.outputs.containerRegistryEndpoint
 output containerRegistryResourceId string = secureData.outputs.containerRegistryResourceId
-output registryVnetName string = secureData.outputs.registryVnetName
-output registryBuildSubnetResourceId string = secureData.outputs.registryBuildSubnetResourceId
 output deployIdentityName string = identities.outputs.deployIdentityName
 output deployIdentityClientId string = identities.outputs.deployIdentityClientId
 output runtimeIdentityName string = identities.outputs.runtimeIdentityName
