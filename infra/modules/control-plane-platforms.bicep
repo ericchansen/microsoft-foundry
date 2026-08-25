@@ -85,7 +85,6 @@ resource sreAgent 'Microsoft.App/agents@2026-01-01' = {
 resource approvalsWorkflow 'Microsoft.Logic/workflows@2019-05-01' = {
   name: '${resourcePrefix}-approvals-loop'
   location: location
-  kind: 'Agentic'
   tags: union(tags, {
     component: 'contoso-approvals'
     'service-name': 'contoso-approvals-loop'
@@ -139,7 +138,7 @@ resource approvalsWorkflow 'Microsoft.Logic/workflows@2019-05-01' = {
               messages: [
                 {
                   role: 'System'
-                  content: 'Classify only synthetic Contoso approval scenarios. Never execute a change. Always call the recommendation tool and require a human decision.'
+                  content: 'Classify only synthetic Contoso approval scenarios. Never execute a change. Use only the recommendation tool when a tool is needed, and always require a human decision.'
                 }
                 {
                   role: 'User'
@@ -151,9 +150,6 @@ resource approvalsWorkflow 'Microsoft.Logic/workflows@2019-05-01' = {
                 agentHistoryReductionSettings: {
                   agentHistoryReductionType: 'maximumTokenCountReduction'
                   maximumTokenCount: 4096
-                }
-                agentChatCompletionSettings: {
-                  temperature: 0
                 }
               }
             }
@@ -197,18 +193,33 @@ resource approvalsWorkflow 'Microsoft.Logic/workflows@2019-05-01' = {
             timeout: 'PT5M'
           }
         }
+        Create_synthetic_review_envelope: {
+          type: 'Compose'
+          inputs: {
+            scenario: '@triggerBody()?[\'scenario\']'
+            disposition: 'Human review required'
+            requiresHumanApproval: true
+            synthetic: true
+            agentLoopCompleted: true
+          }
+          runAfter: {
+            Approval_triage_agent: [
+              'Succeeded'
+            ]
+          }
+        }
         Return_recommendation: {
           type: 'Response'
           kind: 'Http'
           inputs: {
             statusCode: 202
             body: {
-              message: 'Synthetic recommendation generated; no change was executed.'
-              result: '@body(\'Approval_triage_agent\')'
+              message: 'Synthetic agent loop completed; no change was executed.'
+              result: '@outputs(\'Create_synthetic_review_envelope\')'
             }
           }
           runAfter: {
-            Approval_triage_agent: [
+            Create_synthetic_review_envelope: [
               'Succeeded'
             ]
           }

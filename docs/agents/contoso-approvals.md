@@ -17,8 +17,9 @@ has no HTTP call, connector, Azure mutation, or secret. The agent loop is capped
 at five iterations and five minutes.
 
 The request contract requires both a scenario and a `synthetic` marker. The
-workflow returns an HTTP 202 response stating that no change was executed. This
-is a demonstration of the approval decision path, not an approval authority.
+workflow always creates a separate synthetic human-review envelope after the
+agent loop and returns it with HTTP 202. The envelope cannot approve or mutate
+anything; it proves that the demonstration ends at a human decision point.
 
 ## Identity and telemetry
 

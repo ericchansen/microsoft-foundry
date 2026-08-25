@@ -21,6 +21,7 @@ def sre_resource(config):
         "identity": {"type": entry["identity_type"]},
         "properties": {
             "actionConfiguration": {"accessLevel": "Low", "mode": "Review"},
+            "powerState": "Running",
             "knowledgeGraphConfiguration": {
                 "managedResources": [f"/subscriptions/redacted/resourceGroups/{config['resource_group']}"]
             },
@@ -39,20 +40,28 @@ def logic_resource(config):
     return {
         "name": entry["resource_name"],
         "type": entry["resource_type"],
-        "kind": "Agentic",
         "tags": config["ownership_tags"],
         "identity": {"type": "UserAssigned"},
         "properties": {
+            "state": "Enabled",
             "definition": {
                 "actions": {
                     "Approval_triage_agent": {
                         "type": "Agent",
                         "tools": {"Create_approval_recommendation": {"actions": {}}},
-                    }
+                    },
+                    "Create_synthetic_review_envelope": {
+                        "type": "Compose",
+                        "inputs": {"requiresHumanApproval": True, "synthetic": True},
+                    },
                 }
             }
         },
     }
+
+
+def application_insights_resource():
+    return {"properties": {"AppId": "redacted"}}
 
 
 def test_static_inventory_is_machine_checkable(config):
@@ -68,6 +77,7 @@ def test_live_inventory_verifies_both_platforms(monkeypatch, config):
     resources = {
         "contoso-agents-sre-control-plane": sre_resource(config),
         "contoso-agents-approvals-loop": logic_resource(config),
+        "contoso-agents-insights": application_insights_resource(),
     }
     monkeypatch.setattr(
         control_plane.azure_cli,
@@ -90,6 +100,7 @@ def test_logic_apps_without_agent_action_is_not_coverage(monkeypatch, config):
     resources = {
         "contoso-agents-sre-control-plane": sre_resource(config),
         "contoso-agents-approvals-loop": logic_resource(config),
+        "contoso-agents-insights": application_insights_resource(),
     }
     broken = deepcopy(resources["contoso-agents-approvals-loop"])
     broken["properties"]["definition"]["actions"] = {}
@@ -103,6 +114,43 @@ def test_logic_apps_without_agent_action_is_not_coverage(monkeypatch, config):
     approvals = next(platform for platform in report.platforms if platform.platform_id == "contoso-approvals")
     assert not approvals.ok
     assert "Logic Apps workflow contains no Agent action" in approvals.errors
+
+
+def test_logic_apps_requires_a_synthetic_human_review_envelope(monkeypatch, config):
+    resources = {
+        "contoso-agents-sre-control-plane": sre_resource(config),
+        "contoso-agents-approvals-loop": logic_resource(config),
+        "contoso-agents-insights": application_insights_resource(),
+    }
+    del resources["contoso-agents-approvals-loop"]["properties"]["definition"]["actions"][
+        "Create_synthetic_review_envelope"
+    ]
+    monkeypatch.setattr(
+        control_plane.azure_cli,
+        "try_run",
+        lambda args, **_kwargs: resources.get(args[args.index("--name") + 1]),
+    )
+    report = control_plane.verify(config)
+    approvals = next(platform for platform in report.platforms if platform.platform_id == "contoso-approvals")
+    assert not approvals.ok
+    assert "Logic Apps workflow lacks the mandatory synthetic human-review envelope" in approvals.errors
+
+
+def test_sre_must_use_the_shared_application_insights(monkeypatch, config):
+    resources = {
+        "contoso-agents-sre-control-plane": sre_resource(config),
+        "contoso-agents-approvals-loop": logic_resource(config),
+        "contoso-agents-insights": {"properties": {"AppId": "different"}},
+    }
+    monkeypatch.setattr(
+        control_plane.azure_cli,
+        "try_run",
+        lambda args, **_kwargs: resources.get(args[args.index("--name") + 1]),
+    )
+    report = control_plane.verify(config)
+    sre = next(platform for platform in report.platforms if platform.platform_id == "contoso-sre")
+    assert not sre.ok
+    assert "SRE Agent is connected to a different Application Insights resource" in sre.errors
 
 
 def test_logic_apps_observability_is_explicitly_unsupported(config):

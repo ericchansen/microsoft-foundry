@@ -71,6 +71,11 @@ def _check_config(config: dict[str, Any]) -> list[PlatformResult]:
         observability = control_plane.get("observability")
         if observability not in {"supported", "unsupported"}:
             raise ValueError(f"{entry['id']} has invalid observability status {observability!r}")
+        if (
+            str(entry["resource_type"]).lower() == "microsoft.app/agents"
+            and not entry.get("application_insights_name")
+        ):
+            raise ValueError(f"{entry['id']} must declare its Application Insights resource")
 
         results.append(
             PlatformResult(
@@ -88,10 +93,17 @@ def _identity_type(resource: dict[str, Any]) -> str:
     return str((resource.get("identity") or {}).get("type", "")).replace(" ", "")
 
 
-def _find_agent_actions(resource: dict[str, Any]) -> list[dict[str, Any]]:
+def _workflow_actions(resource: dict[str, Any]) -> dict[str, Any]:
     definition = (resource.get("properties") or {}).get("definition") or {}
-    actions = definition.get("actions") or {}
-    return [action for action in actions.values() if isinstance(action, dict) and action.get("type") == "Agent"]
+    return definition.get("actions") or {}
+
+
+def _find_agent_actions(resource: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        action
+        for action in _workflow_actions(resource).values()
+        if isinstance(action, dict) and action.get("type") == "Agent"
+    ]
 
 
 def _check_live_platform(
@@ -100,6 +112,7 @@ def _check_live_platform(
     resource: dict[str, Any],
     ownership_tags: dict[str, str],
     resource_group: str,
+    expected_application_insights_app_id: str | None = None,
 ) -> None:
     result.present = True
     result.checks.append("live:resource-present")
@@ -120,8 +133,13 @@ def _check_live_platform(
     if entry["resource_type"].lower() == "microsoft.app/agents":
         properties = resource.get("properties") or {}
         app_insights = (properties.get("logConfiguration") or {}).get("applicationInsightsConfiguration") or {}
-        if not app_insights.get("appId") or not app_insights.get("connectionString"):
+        if not app_insights.get("appId"):
             result.errors.append("SRE Agent is not connected to Application Insights")
+        elif (
+            expected_application_insights_app_id is not None
+            and app_insights["appId"] != expected_application_insights_app_id
+        ):
+            result.errors.append("SRE Agent is connected to a different Application Insights resource")
         else:
             result.checks.append("live:application-insights")
 
@@ -138,14 +156,13 @@ def _check_live_platform(
         else:
             result.checks.append("live:review-only")
 
-    if entry["resource_type"].lower() == "microsoft.logic/workflows":
-        if resource.get("kind") != entry.get("expected_kind"):
-            result.errors.append(
-                f"Logic Apps kind is {resource.get('kind')!r}; expected {entry.get('expected_kind')!r}"
-            )
+        if properties.get("powerState") not in {"Running", "Stopped"}:
+            result.errors.append("SRE Agent has no recognized lifecycle power state")
         else:
-            result.checks.append("live:agentic-kind")
+            result.checks.append("live:lifecycle-state")
 
+    if entry["resource_type"].lower() == "microsoft.logic/workflows":
+        properties = resource.get("properties") or {}
         agent_actions = _find_agent_actions(resource)
         if not agent_actions:
             result.errors.append("Logic Apps workflow contains no Agent action")
@@ -157,6 +174,22 @@ def _check_live_platform(
                 result.errors.append("Logic Apps Agent action must expose a bounded synthetic tool")
             else:
                 result.checks.append("live:synthetic-tool")
+
+        review_envelope = _workflow_actions(resource).get("Create_synthetic_review_envelope") or {}
+        review_inputs = review_envelope.get("inputs") or {}
+        if (
+            review_envelope.get("type") != "Compose"
+            or review_inputs.get("requiresHumanApproval") is not True
+            or review_inputs.get("synthetic") is not True
+        ):
+            result.errors.append("Logic Apps workflow lacks the mandatory synthetic human-review envelope")
+        else:
+            result.checks.append("live:human-review-envelope")
+
+        if properties.get("state") not in {"Enabled", "Disabled"}:
+            result.errors.append("Logic Apps workflow has no recognized lifecycle state")
+        else:
+            result.checks.append("live:lifecycle-state")
 
 
 def verify(config: dict[str, Any], *, live: bool = True) -> InventoryReport:
@@ -195,7 +228,36 @@ def verify(config: dict[str, Any], *, live: bool = True) -> InventoryReport:
         if resource is None:
             result.errors.append("resource was not returned by Azure Resource Manager")
             continue
-        _check_live_platform(entry, result, resource, ownership_tags, report.resource_group)
+
+        expected_app_id = None
+        if result.resource_type.lower() == "microsoft.app/agents":
+            application_insights = azure_cli.try_run(
+                [
+                    "resource",
+                    "show",
+                    "--resource-group",
+                    report.resource_group,
+                    "--name",
+                    str(entry["application_insights_name"]),
+                    "--resource-type",
+                    "Microsoft.Insights/components",
+                    "--api-version",
+                    "2020-02-02",
+                ],
+                default=None,
+            )
+            expected_app_id = ((application_insights or {}).get("properties") or {}).get("AppId")
+            if expected_app_id is None:
+                result.errors.append("shared Application Insights resource was not returned by Azure Resource Manager")
+
+        _check_live_platform(
+            entry,
+            result,
+            resource,
+            ownership_tags,
+            report.resource_group,
+            expected_application_insights_app_id=expected_app_id,
+        )
     return report
 
 

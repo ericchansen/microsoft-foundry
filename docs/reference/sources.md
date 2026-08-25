@@ -54,6 +54,7 @@ meter. See [Cost model](../platform/costs.md).
 | --- | --- |
 | Agentic workflow concepts | <https://learn.microsoft.com/azure/logic-apps/agent-workflows-concepts> |
 | Creating autonomous agent workflows | <https://learn.microsoft.com/azure/logic-apps/create-autonomous-agent-workflows> |
+| Workflow ARM/Bicep resource schema | <https://learn.microsoft.com/azure/templates/microsoft.logic/workflows> |
 | Pricing | <https://azure.microsoft.com/pricing/details/logic-apps/> |
 | Consumption autonomous workflow guide | <https://learn.microsoft.com/azure/logic-apps/create-autonomous-agent-workflows> |
 

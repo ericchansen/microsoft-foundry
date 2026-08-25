@@ -12,6 +12,7 @@ platforms:
     resource_type: Microsoft.App/agents
     api_version: 2026-01-01
     identity_type: SystemAssigned,UserAssigned
+    application_insights_name: contoso-agents-insights
     control_plane:
       discovery: automatic
       lifecycle:
@@ -26,7 +27,6 @@ platforms:
     resource_type: Microsoft.Logic/workflows
     api_version: 2019-05-01
     identity_type: UserAssigned
-    expected_kind: Agentic
     expected_action_type: Agent
     control_plane:
       discovery: automatic

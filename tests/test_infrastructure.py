@@ -131,9 +131,10 @@ def test_sre_agent_uses_shared_application_insights(infra):
 
 def test_logic_apps_agent_loop_is_bounded_and_synthetic(infra):
     assert "Microsoft.Logic/workflows@2019-05-01" in infra["platforms"]
-    assert "kind: 'Agentic'" in infra["platforms"]
+    assert "kind: 'Agentic'" not in infra["platforms"]
     assert "type: 'Agent'" in infra["platforms"]
     assert "Create_approval_recommendation" in infra["platforms"]
+    assert "Create_synthetic_review_envelope" in infra["platforms"]
     assert "requiresHumanApproval: true" in infra["platforms"]
     assert "synthetic: true" in infra["platforms"]
     assert "count: 5" in infra["platforms"]

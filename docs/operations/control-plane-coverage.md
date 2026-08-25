@@ -59,10 +59,12 @@ fails unless:
 
 - both exact resource names and types exist;
 - ownership tags and dedicated identities match;
-- Contoso SRE uses shared Application Insights, the owned resource-group scope,
-  and review-only access;
-- Contoso Approvals has the `Agentic` kind, an `Agent` action, and a bounded
-  synthetic tool.
+- Contoso SRE's returned Application Insights application ID matches the shared
+  component, and it uses the owned resource-group scope and review-only access;
+- Contoso Approvals has an `Agent` action and a bounded synthetic tool. The
+  [`Microsoft.Logic/workflows@2019-05-01` resource API](https://learn.microsoft.com/azure/templates/microsoft.logic/workflows)
+  does not expose a separate agentic workflow kind, so inventory verification
+  uses the workflow definition rather than an unsupported resource property.
 
 The full JSON evidence is written under `internal/`; the sanitized summary is
 written under `reports/`. Neither directory is published or committed.
@@ -87,6 +89,7 @@ send only a fictional scenario:
 }
 ```
 
-A successful response says that a recommendation was generated and no change
-was executed. Delete any local file that contains the callback URL after the
-test.
+A successful response says that the synthetic agent loop completed and no
+change was executed. Its result has `requiresHumanApproval: true` and
+`synthetic: true`. Delete any local file that contains the callback URL after
+the test.

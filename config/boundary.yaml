@@ -72,6 +72,18 @@ resources:
   - name: api-management
     kind: Microsoft.ApiManagement/service
     scope: providers/Microsoft.ApiManagement/service/contoso-agents-gateway
+  - name: traffic-managed-environment
+    kind: Microsoft.App/managedEnvironments
+    scope: providers/Microsoft.App/managedEnvironments/contoso-agents-traffic-env
+  - name: travel-traffic-job
+    kind: Microsoft.App/jobs
+    scope: providers/Microsoft.App/jobs/contoso-agents-travel-traffic
+  - name: field-managed-environment
+    kind: Microsoft.App/managedEnvironments
+    scope: providers/Microsoft.App/managedEnvironments/contoso-field-env
+  - name: field-agent-host
+    kind: Microsoft.App/containerApps
+    scope: providers/Microsoft.App/containerApps/contoso-field
   - name: sre-agent
     kind: Microsoft.App/agents
     scope: providers/Microsoft.App/agents/contoso-agents-sre-control-plane
@@ -97,6 +109,14 @@ identities:
   - name: approvals-loop-identity
     kind: Microsoft.ManagedIdentity/userAssignedIdentities
     scope: providers/Microsoft.ManagedIdentity/userAssignedIdentities/contoso-agents-approvals
+    reuse_existing: false
+  - name: travel-traffic-identity
+    kind: Microsoft.ManagedIdentity/userAssignedIdentities
+    scope: providers/Microsoft.ManagedIdentity/userAssignedIdentities/contoso-agents-travel-traffic
+    reuse_existing: false
+  - name: field-runtime-identity
+    kind: Microsoft.ManagedIdentity/userAssignedIdentities
+    scope: providers/Microsoft.ManagedIdentity/userAssignedIdentities/contoso-field-runtime
     reuse_existing: false
 
 # Role assignments. Every scope is inside the resource group; nothing is granted
