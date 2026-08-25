@@ -1,0 +1,104 @@
+# Ownership boundary — the single blast radius for this project.
+#
+# THE RULE
+#   Everything this project creates, assigns or deletes lives inside ONE resource
+#   group. Every other resource group, identity, App Insights instance, agent,
+#   endpoint and role assignment in the subscription belongs to somebody else and
+#   is read-only.
+#
+# `foundry boundary` validates this file before anything is provisioned, and
+# refuses to create the resource group if any check fails.
+#
+# Scopes below are RELATIVE to the resource group on purpose. A relative scope
+# cannot name another subscription or resource group, so the boundary is enforced
+# by the shape of the data rather than by reviewer attention.
+
+version: 1
+
+resource_group: rg-contoso-agents
+
+# Phase 0 asserts the boundary is clean. Adopting a resource group this project
+# did not create is forbidden; flipping this to true requires a reviewed change.
+allow_existing_resource_group: false
+
+tags:
+  project: contoso-agents
+  managed-by: microsoft-foundry-demo
+  boundary: rg-contoso-agents
+  cost-centre: demo
+
+# Resources v1 intends to create. Phase 0 creates none of them; this is the
+# declared plan the boundary check validates ahead of later stacked PRs.
+resources:
+  - name: foundry-account
+    kind: Microsoft.CognitiveServices/accounts
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-foundry
+  - name: foundry-project
+    kind: Microsoft.CognitiveServices/accounts/projects
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-foundry/projects/contoso-agents
+  - name: apim-gateway
+    kind: Microsoft.ApiManagement/service
+    scope: providers/Microsoft.ApiManagement/service/contoso-agents-apim
+  - name: container-apps-env
+    kind: Microsoft.App/managedEnvironments
+    scope: providers/Microsoft.App/managedEnvironments/contoso-agents-env
+  - name: log-analytics
+    kind: Microsoft.OperationalInsights/workspaces
+    scope: providers/Microsoft.OperationalInsights/workspaces/contoso-agents-logs
+  - name: app-insights
+    kind: microsoft.insights/components
+    scope: providers/microsoft.insights/components/contoso-agents-insights
+
+# Identities. All are created inside the boundary. Reusing any pre-existing
+# identity is rejected by the `plan:no-reuse` check.
+identities:
+  - name: agent-runtime-identity
+    kind: Microsoft.ManagedIdentity/userAssignedIdentities
+    scope: providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-contoso-agent-runtime
+    reuse_existing: false
+
+# Role assignments. Every scope is inside the resource group; nothing is granted
+# at subscription or management-group level.
+role_assignments:
+  - name: runtime-reads-foundry
+    role: Cognitive Services User
+    principal: agent-runtime-identity
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-foundry
+  - name: runtime-writes-telemetry
+    role: Monitoring Metrics Publisher
+    principal: agent-runtime-identity
+    scope: providers/microsoft.insights/components/contoso-agents-insights
+
+# Diagnostic settings must land in this project's own workspace, never in a
+# shared or pre-existing one.
+diagnostic_settings:
+  - name: apim-diagnostics
+    target_workspace: log-analytics
+    scope: providers/Microsoft.ApiManagement/service/contoso-agents-apim
+  - name: container-apps-diagnostics
+    target_workspace: log-analytics
+    scope: providers/Microsoft.App/managedEnvironments/contoso-agents-env
+
+# Teardown. Deleting the resource group removes everything above in one action,
+# which is the point of keeping the blast radius to a single group.
+teardown:
+  - name: delete-resource-group
+    kind: resource-group
+    scope: .
+    note: az group delete -n rg-contoso-agents --yes
+
+# Components that live OUTSIDE Azure and therefore outside this boundary. They
+# cannot be torn down by deleting the resource group, so they are inventoried
+# here explicitly and must be removed by hand.
+external_teardown:
+  - name: power-platform-environment
+    system: Power Platform
+    note: >-
+      A dedicated "Contoso Agents" environment. Not created by this project's
+      automation because it is a tenant-scope mutation outside the Azure boundary.
+      Delete from the Power Platform admin centre.
+    reference: https://learn.microsoft.com/power-platform/admin/create-environment
+  - name: copilot-studio-agent
+    system: Microsoft Copilot Studio
+    note: Concierge agent and any tenant-wide publication. Unpublish before deleting.
+    reference: https://learn.microsoft.com/microsoft-copilot-studio/publication-fundamentals-publish-channels

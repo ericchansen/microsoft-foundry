@@ -1,0 +1,118 @@
+# Region requirements — the inputs to `foundry regions`.
+#
+# There is deliberately no "preferred region" setting. The selected region is an
+# OUTPUT of running the gates below against live Azure data. If you want a
+# different answer, change a requirement and justify it here, in review.
+
+version: 1
+
+# Leave empty to evaluate every physical Azure region the subscription can see.
+# Populate only to reproduce a historical run.
+candidate_regions: []
+
+residency:
+  # Contoso's demo tenant is administered from the United States. Canada and
+  # Europe are deliberately left in the running so the choice is genuinely
+  # contested on cost rather than pre-narrowed to the answer we expected.
+  allowed_geography_groups:
+    - US
+    - Canada
+    - Europe
+
+reliability:
+  # An Azure paired region is required so the platform has a documented
+  # geo-redundancy story.
+  require_paired_region: true
+  # Availability zones are recorded and used as a ranking signal, but are NOT a
+  # hard gate: API Management Basic v2 does not offer zone redundancy and
+  # Container Apps consumption workloads are single-region, so requiring zones
+  # would eliminate candidates for resilience v1 cannot actually use. Raise this
+  # to 3 when the platform moves to a zone-redundant tier.
+  minimum_availability_zones: 0
+
+latency:
+  origin:
+    name: Primary user population (US Central)
+    latitude: 41.8781
+    longitude: -87.6298
+  # Roughly transatlantic. Wide enough that European regions stay in contention
+  # and are eliminated on merit, narrow enough to exclude Asia-Pacific.
+  max_km: 8000
+
+# Live check: ARM must report the region as a supported location for each type.
+resource_types:
+  - label: container-apps
+    namespace: Microsoft.App
+    type: managedEnvironments
+  - label: application-insights
+    namespace: microsoft.insights
+    type: components
+  - label: log-analytics
+    namespace: Microsoft.OperationalInsights
+    type: workspaces
+  - label: api-management
+    namespace: Microsoft.ApiManagement
+    type: service
+  - label: logic-apps
+    namespace: Microsoft.Logic
+    type: workflows
+  - label: foundry-account
+    namespace: Microsoft.CognitiveServices
+    type: accounts
+
+# Matrix check: capabilities with no queryable API. See config/capability-matrix.yaml.
+capabilities:
+  required:
+    - apim_basic_v2
+    - azure_sre_agent
+    - foundry_agent_service
+    - logic_apps_agent_loop
+    - power_platform_co_residency
+
+# Live check: az cognitiveservices model list
+models:
+  required:
+    - id: frontier-chat
+      description: Frontier chat model for the concierge and orchestration agents
+      name_pattern: "^gpt-5"
+      sku: GlobalStandard
+      lifecycle_status:
+        - GenerallyAvailable
+        - Preview
+
+# Live check: az cognitiveservices usage list
+quota:
+  required:
+    - id: global-standard-chat
+      description: Headroom for the frontier chat pool, in thousands of tokens per minute
+      usage_name_pattern: "^OpenAI\\.GlobalStandard\\.gpt-5"
+      min_available: 200
+
+# Ranking basket. Priced live per region via the Azure Retail Prices API. These
+# are the components whose unit price actually varies between regions; model
+# inference is billed on global meters and does not discriminate between them.
+cost_basket:
+  - id: apim-basic-v2
+    quantity: 730          # one unit, one month
+    meter:
+      serviceName: API Management
+      skuName: Basic v2
+      meterName: Basic v2 Unit
+  - id: aca-vcpu
+    quantity: 1314000      # 0.5 vCPU x 730 h, in vCPU-seconds
+    meter:
+      serviceName: Azure Container Apps
+      skuName: Standard
+      meterName: Standard vCPU Active Usage
+  - id: aca-memory
+    quantity: 2628000      # 1 GiB x 730 h, in GiB-seconds
+    meter:
+      serviceName: Azure Container Apps
+      skuName: Standard
+      meterName: Standard Memory Active Usage
+  - id: aca-requests
+    quantity: 5000000
+    meter:
+      serviceName: Azure Container Apps
+      skuName: Standard
+      meterName: Standard Requests
