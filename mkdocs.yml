@@ -77,6 +77,7 @@ nav:
       - Region selection: platform/regions.md
       - Cost model: platform/costs.md
       - Ownership boundary: platform/boundaries.md
+      - Power Platform: platform/power-platform.md
   - Operations:
       - Verification: operations/verification.md
   - Reference:
