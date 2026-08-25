@@ -87,6 +87,24 @@ resources:
   - name: foundry-guardrail-policy
     kind: Microsoft.CognitiveServices/accounts/raiPolicies
     scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/raiPolicies/contoso-agents-guardrails
+  - name: sre-control-plane
+    kind: Microsoft.App/agents
+    scope: providers/Microsoft.App/agents/contoso-agents-sre-control-plane
+  - name: field-container-app
+    kind: Microsoft.App/containerApps
+    scope: providers/Microsoft.App/containerApps/contoso-field
+  - name: travel-traffic-job
+    kind: Microsoft.App/jobs
+    scope: providers/Microsoft.App/jobs/contoso-agents-travel-traffic
+  - name: traffic-managed-environment
+    kind: Microsoft.App/managedEnvironments
+    scope: providers/Microsoft.App/managedEnvironments/contoso-agents-traffic-env
+  - name: field-managed-environment
+    kind: Microsoft.App/managedEnvironments
+    scope: providers/Microsoft.App/managedEnvironments/contoso-field-env
+  - name: approvals-workflow
+    kind: Microsoft.Logic/workflows
+    scope: providers/Microsoft.Logic/workflows/contoso-agents-approvals-loop
 
 diagnostic_settings:
   - name: ai-gateway-logs
@@ -111,6 +129,22 @@ identities:
   - name: github-deploy-identity
     kind: Microsoft.ManagedIdentity/userAssignedIdentities
     scope: providers/Microsoft.ManagedIdentity/userAssignedIdentities/contoso-agents-github-deploy
+    reuse_existing: false
+  - name: approvals-identity
+    kind: Microsoft.ManagedIdentity/userAssignedIdentities
+    scope: providers/Microsoft.ManagedIdentity/userAssignedIdentities/contoso-agents-approvals
+    reuse_existing: false
+  - name: sre-identity
+    kind: Microsoft.ManagedIdentity/userAssignedIdentities
+    scope: providers/Microsoft.ManagedIdentity/userAssignedIdentities/contoso-agents-sre
+    reuse_existing: false
+  - name: travel-traffic-identity
+    kind: Microsoft.ManagedIdentity/userAssignedIdentities
+    scope: providers/Microsoft.ManagedIdentity/userAssignedIdentities/contoso-agents-travel-traffic
+    reuse_existing: false
+  - name: field-runtime-identity
+    kind: Microsoft.ManagedIdentity/userAssignedIdentities
+    scope: providers/Microsoft.ManagedIdentity/userAssignedIdentities/contoso-field-runtime
     reuse_existing: false
 
 # Role assignments. Every scope is inside the resource group; nothing is granted

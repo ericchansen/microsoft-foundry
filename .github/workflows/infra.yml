@@ -3,7 +3,10 @@ name: infrastructure
 on:
   pull_request:
     paths:
+      - "config/gateway.yaml"
       - "infra/**"
+      - "src/contoso_foundry/gateway.py"
+      - "tests/test_gateway.py"
       - "tests/test_infrastructure.py"
       - ".github/workflows/infra.yml"
   workflow_dispatch:
@@ -15,9 +18,15 @@ on:
         options:
           - what-if
           - deploy
+          - verify
       confirm_resource_group:
         description: Type rg-contoso-agents to authorize the selected operation
         required: true
+        type: string
+      existing_model_deployments_json:
+        description: JSON array of deployments already created by dependency stacks; use [] for a clean deployment
+        required: false
+        default: "[]"
         type: string
 
 permissions:
@@ -53,10 +62,12 @@ jobs:
         run: |
           az bicep lint --file infra/main.bicep
           az bicep build --file infra/main.bicep --stdout >/dev/null
+          az bicep build --file infra/gateway-association.bicep --stdout >/dev/null
+          az bicep build --file infra/model-governance.bicep --stdout >/dev/null
           test ! -f infra/main.json
 
-      - name: Infrastructure contracts
-        run: pytest -q tests/test_infrastructure.py
+      - name: Infrastructure and gateway contracts
+        run: pytest -q tests/test_infrastructure.py tests/test_gateway.py
 
   azure:
     name: ${{ inputs.operation }} protected environment
@@ -70,8 +81,10 @@ jobs:
       id-token: write
     env:
       RESOURCE_GROUP: rg-contoso-agents
+      RESOURCE_PREFIX: contoso-agents
       LOCATION: northcentralus
       BUDGET_CONTACT_EMAIL: ${{ vars.BUDGET_CONTACT_EMAIL }}
+      EXISTING_MODEL_DEPLOYMENTS_JSON: ${{ inputs.existing_model_deployments_json }}
     steps:
       - uses: actions/checkout@v5
 
@@ -87,6 +100,8 @@ jobs:
         run: |
           test "${{ inputs.confirm_resource_group }}" = "$RESOURCE_GROUP"
           test -n "$BUDGET_CONTACT_EMAIL"
+          test -n "$EXISTING_MODEL_DEPLOYMENTS_JSON"
+          python -c "import json, os; assert isinstance(json.loads(os.environ['EXISTING_MODEL_DEPLOYMENTS_JSON']), list)"
 
       - name: Azure login with workload identity federation
         uses: azure/login@v2
@@ -95,9 +110,18 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Verify live ownership boundary
+        run: foundry boundary
+
       - name: Verify owned resource group
         run: |
           test "$(az group show --name "$RESOURCE_GROUP" --query tags.boundary -o tsv)" = "$RESOURCE_GROUP"
+
+      - name: Attest existing Foundry model deployments
+        if: inputs.operation != 'verify'
+        run: |
+          foundry gateway attest-model-deployments \
+            --model-deployments-json "$EXISTING_MODEL_DEPLOYMENTS_JSON"
 
       - name: What-if
         if: inputs.operation == 'what-if'
@@ -105,13 +129,19 @@ jobs:
           az deployment group what-if \
             --resource-group "$RESOURCE_GROUP" \
             --template-file infra/main.bicep \
-            --parameters infra/main.bicepparam
+            --parameters infra/main.bicepparam \
+            --parameters existingModelDeployments="$EXISTING_MODEL_DEPLOYMENTS_JSON"
 
       - name: Deploy
         if: inputs.operation == 'deploy'
         run: |
           az deployment group create \
-            --name "telemetry-${GITHUB_RUN_ID}" \
+            --name "gateway-governance-${GITHUB_RUN_ID}" \
             --resource-group "$RESOURCE_GROUP" \
             --template-file infra/main.bicep \
-            --parameters infra/main.bicepparam
+            --parameters infra/main.bicepparam \
+            --parameters existingModelDeployments="$EXISTING_MODEL_DEPLOYMENTS_JSON"
+
+      - name: Verify live gateway controls
+        if: inputs.operation == 'verify'
+        run: foundry gateway verify

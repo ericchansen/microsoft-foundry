@@ -25,6 +25,7 @@ def infra(repo_root: Path) -> dict[str, str]:
         "custom_agent": repo_root / "infra" / "policies" / "custom-agent.xml",
         "identity": repo_root / "infra" / "modules" / "identity.bicep",
         "data": repo_root / "infra" / "modules" / "secure-data.bicep",
+        "workflow": repo_root / ".github" / "workflows" / "infra.yml",
     }
     return {name: path.read_text(encoding="utf-8") for name, path in paths.items()}
 
@@ -122,6 +123,26 @@ def test_each_project_has_an_explicit_gateway_route_and_connection(infra):
     assert "gatewayConfig.expected_model_deployments" not in infra["association_entrypoint"]
     assert "gatewayConfig.expected_model_deployments" not in infra["main"]
     assert "gatewayConfig.projects" in infra["association_entrypoint"]
+
+
+def test_deploy_workflow_checks_live_boundary_after_login(infra):
+    login = infra["workflow"].index("uses: azure/login@v2")
+    live_boundary = infra["workflow"].index("- name: Verify live ownership boundary")
+    catalog_attestation = infra["workflow"].index(
+        "- name: Attest existing Foundry model deployments"
+    )
+    what_if = infra["workflow"].index("- name: What-if")
+    deploy = infra["workflow"].index("- name: Deploy")
+
+    assert login < live_boundary < catalog_attestation < what_if
+    assert login < live_boundary < catalog_attestation < deploy
+    assert "existing_model_deployments_json:" in infra["workflow"]
+    assert 'default: "[]"' in infra["workflow"]
+    assert '--parameters existingModelDeployments="$EXISTING_MODEL_DEPLOYMENTS_JSON"' in infra["workflow"]
+    assert "isinstance(json.loads" in infra["workflow"]
+    assert "foundry gateway attest-model-deployments" in infra["workflow"]
+
+
 def test_gateway_backend_uses_managed_identity(infra):
     assert "authentication-managed-identity" in infra["association"]
     assert "https://cognitiveservices.azure.com" in infra["association"]
