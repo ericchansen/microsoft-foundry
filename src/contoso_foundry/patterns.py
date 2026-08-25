@@ -30,11 +30,24 @@ class Rule:
 
     ``why`` is surfaced verbatim in scanner output so a failing build explains
     itself without anyone needing to read this file.
+
+    ``redaction`` exists because a good *detector* is often a bad *redactor*. It
+    is enough for the scanner to match ``AccountKey=`` to know a connection
+    string is present, but substituting only that marker would leave the key
+    itself on the page. When the span that proves a secret exists is narrower
+    than the span that must be removed, ``redaction`` carries the wider pattern
+    and the sanitizer uses it instead.
     """
 
     name: str
     pattern: re.Pattern[str]
     why: str
+    redaction: re.Pattern[str] | None = None
+
+    @property
+    def redaction_pattern(self) -> re.Pattern[str]:
+        """The span the sanitizer must replace to make the text safe."""
+        return self.redaction or self.pattern
 
 
 #: Tenant-specific service endpoints. These are deliberately *not* the public
@@ -98,21 +111,35 @@ SECRET_RULES: tuple[Rule, ...] = (
         "private-key",
         re.compile(r"-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----"),
         "a PEM private key block",
+        # Replacing only the header would leave the key body verbatim on the page.
+        redaction=re.compile(
+            r"-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----"
+            r"(?:.*?-----END (?:[A-Z ]+ )?PRIVATE KEY-----)?",
+            re.S,
+        ),
     ),
     Rule(
         "storage-connection-string",
         re.compile(r"DefaultEndpointsProtocol=|AccountKey=|SharedAccessSignature=", re.I),
         "an Azure Storage connection string",
+        redaction=re.compile(
+            r"(?:DefaultEndpointsProtocol|AccountKey|SharedAccessSignature)\s*=\s*[^;\s\"'<>]*",
+            re.I,
+        ),
     ),
     Rule(
         "servicebus-connection-string",
         re.compile(r"SharedAccessKeyName\s*=|SharedAccessKey\s*=", re.I),
         "a Service Bus / Event Hubs connection string",
+        redaction=re.compile(r"(?:SharedAccessKeyName|SharedAccessKey)\s*=\s*[^;\s\"'<>]*", re.I),
     ),
     Rule(
         "sql-connection-string",
         re.compile(r"Server\s*=\s*tcp:|Password\s*=\s*[^\s;\"']{6,}", re.I),
         "a SQL connection string",
+        redaction=re.compile(
+            r"(?:Server\s*=\s*tcp:[^;\s\"'<>]*|Password\s*=\s*[^;\s\"'<>]{6,})", re.I
+        ),
     ),
     Rule(
         "jwt",
@@ -180,9 +207,21 @@ SYNTHETIC_EMAIL_DOMAINS = frozenset(
 
 EMAIL = re.compile(r"\b[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+\.[A-Za-z]{2,})\b")
 
-#: North-American style phone numbers. Numbers in the 555-01xx range are reserved
-#: for fiction and are therefore allowed.
+#: North-American style phone numbers, captured as (area, exchange, line).
 PHONE = re.compile(r"\b(?:\+1[ .-]?)?\(?(\d{3})\)?[ .-]?(\d{3})[ .-]?(\d{4})\b")
-FICTIONAL_PHONE_PREFIX = "5550"
+
+FICTIONAL_PHONE_EXCHANGE = "555"
+
+
+def is_fictional_phone(match: re.Match[str]) -> bool:
+    """True for the range actually reserved for fiction.
+
+    ATIS/NANPA reserves only ``555-0100`` through ``555-0199`` for fictional use.
+    The wider ``555`` exchange is live and assignable, so exempting all of it
+    would let a real number such as ``212-555-9999`` through the gate.
+    """
+    exchange, line = match.group(2), match.group(3)
+    return exchange == FICTIONAL_PHONE_EXCHANGE and 100 <= int(line) <= 199
+
 
 US_SSN = re.compile(r"\b\d{3}-\d{2}-\d{4}\b")

@@ -37,14 +37,14 @@ class Sanitizer:
     def text(self, value: str) -> str:
         """Redact every known identifier class in ``value``."""
         # Resource IDs first: they embed GUIDs and names we do not want to leak.
-        value = patterns.IDENTIFIER_RULES[1].pattern.sub("<azure-resource-id>", value)
+        value = patterns.IDENTIFIER_RULES[1].redaction_pattern.sub("<azure-resource-id>", value)
         value = patterns.GUID.sub(lambda m: self._guid_placeholder(m.group(0)), value)
-        value = patterns.IDENTIFIER_RULES[0].pattern.sub("<entra-domain>", value)
-        value = patterns.IDENTIFIER_RULES[2].pattern.sub("<subscription-name>", value)
+        value = patterns.IDENTIFIER_RULES[0].redaction_pattern.sub("<entra-domain>", value)
+        value = patterns.IDENTIFIER_RULES[2].redaction_pattern.sub("<subscription-name>", value)
         for rule in patterns.LIVE_ENDPOINT_RULES:
-            value = rule.pattern.sub(f"<{rule.name}>", value)
+            value = rule.redaction_pattern.sub(f"<{rule.name}>", value)
         for rule in patterns.SECRET_RULES:
-            value = rule.pattern.sub("<redacted-secret>", value)
+            value = rule.redaction_pattern.sub("<redacted-secret>", value)
         value = patterns.EMAIL.sub(self._email, value)
         return value
 

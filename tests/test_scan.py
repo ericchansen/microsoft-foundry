@@ -73,13 +73,22 @@ class TestSecretRules:
     def test_catches_secret_shapes(self, text: str):
         assert scan.scan_text(text), f"expected a finding for {text!r}"
 
-    def test_excerpts_are_redacted(self):
+    def test_findings_never_carry_matched_text(self):
         """A scanner that prints the secret into a public build log has leaked it."""
         secret = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWX=="
         findings = scan.scan_text(f"AccountKey={secret}")
         assert findings
         for finding in findings:
-            assert secret not in finding.excerpt
+            rendered = str(finding)
+            assert secret not in rendered
+            # Short values are the dangerous case: an 11-character national ID
+            # would once have been echoed whole.
+            assert finding.column > 0
+
+    def test_short_secrets_are_not_echoed_either(self):
+        findings = scan.scan_text("id 123-45-6789 on file")
+        assert findings
+        assert all("123-45-6789" not in str(f) for f in findings)
 
 
 class TestPersonalData:
@@ -113,16 +122,29 @@ class TestScanPath:
         assert result.findings[0].line_number == 2
         assert not result.ok
 
-    def test_skips_theme_assets(self, tmp_path: Path):
-        """Minified theme bundles are noise, and we did not author them."""
+    def test_scans_asset_bundles(self, tmp_path: Path):
+        """Assets are published bytes too, so the gate reads them like any page."""
         assets = tmp_path / "assets" / "javascripts"
         assets.mkdir(parents=True)
         (assets / "bundle.js").write_text(REAL_LOOKING_GUID, encoding="utf-8")
 
         result = scan.scan_path(tmp_path)
 
-        assert result.scanned_files == 0
-        assert result.ok
+        assert result.scanned_files == 1
+        assert not result.ok
+
+    def test_skips_only_vendored_third_party_libraries(self, tmp_path: Path):
+        """The narrow exclusion is narrow: our own assets are still scanned."""
+        vendored = tmp_path / "assets" / "javascripts" / "lunr"
+        vendored.mkdir(parents=True)
+        (vendored / "tinyseg.js").write_text(REAL_LOOKING_GUID, encoding="utf-8")
+        ours = tmp_path / "assets" / "javascripts" / "extra.js"
+        ours.write_text(REAL_LOOKING_GUID, encoding="utf-8")
+
+        result = scan.scan_path(tmp_path)
+
+        assert result.scanned_files == 1
+        assert [f.path.name for f in result.findings] == ["extra.js"]
 
     def test_scans_a_directory_named_internal_inside_the_site(self, tmp_path: Path):
         """`internal` must not be a skip-list entry when walking build output.
