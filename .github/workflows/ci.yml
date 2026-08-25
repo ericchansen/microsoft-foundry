@@ -59,6 +59,12 @@ jobs:
 
       - uses: Azure/setup-azd@v2
 
+      - name: Install required Foundry providers
+        run: |
+          azd extension install azure.ai.agents --source azd
+          azd extension install azure.ai.connections --source azd
+          azd extension install azure.ai.projects --source azd
+
       - name: Install hosted runtime and project
         run: |
           pip install -e ".[dev]"

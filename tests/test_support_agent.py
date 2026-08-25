@@ -125,6 +125,7 @@ def test_live_workflow_pins_shared_registry_image_and_never_supplies_identity_he
     assert "cloud_RoleName == 'contoso-support'" in workflow
     assert "azd ai agent doctor --local-only" in ci_workflow
     assert "azd env new support-agent-doctor --no-prompt" in ci_workflow
+    assert "azd extension install azure.ai.connections --source azd" in ci_workflow
 
 
 @pytest.mark.parametrize("raw", ["", "[]", "{", '{"bad user": "OID-AMER-SUPLEAD-01"}', '{"user": "bad"}'])
