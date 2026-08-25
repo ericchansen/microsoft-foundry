@@ -44,10 +44,16 @@ changing the answer by a factor of a thousand.
 published meter must declare a reserve. Recording it as zero is banned.
 
 The Contoso Research agent adds two live-priced Global Standard
-`gpt-5.4-mini` token meters. Its hosted sandbox is different: Microsoft
-documents active CPU-and-memory consumption billing, but the Retail Prices API
-does not expose a unique hosted-agent compute meter. The model therefore holds
-a **$30/month reserve** for 100 active session-hours at 0.5 vCPU and 1 GiB.
+`gpt-5.4-mini` token meters. Research receives 3 million input and 0.6 million
+output tokens per month from the estate-wide allowance for at most four
+conversations/hour; these quantities are not additional standalone capacity.
+The agent reuses the platform's shared container registry rather than adding a
+Research-specific registry.
+
+Its hosted sandbox is different: Microsoft documents active CPU-and-memory
+consumption billing, but the Retail Prices API does not expose a unique
+hosted-agent compute meter. The model therefore retains a **$30/month reserve**
+for 100 active session-hours at 0.5 vCPU and 1 GiB.
 
 ## Components with no published price
 

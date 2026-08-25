@@ -268,6 +268,17 @@ class TestShippedEstimate:
         assert studio, "the estimate must account for Copilot Studio capacity"
         assert all(i["billing"] == "external" for i in studio)
 
+    def test_research_uses_only_its_estate_token_allocation(self, estimate):
+        by_id = {item["id"]: item for item in estimate["line_items"]}
+
+        assert by_id["contoso-research-input"]["quantity"] == 3_000_000
+        assert by_id["contoso-research-output"]["quantity"] == 600_000
+        assert by_id["contoso-research-hosted-compute"]["budget_reserve_usd"] == 30
+        assert not any(
+            "research" in item["id"] and "registry" in item["id"]
+            for item in estimate["line_items"]
+        )
+
     def test_line_item_ids_are_unique(self, estimate):
         ids = [i["id"] for i in estimate["line_items"]]
         assert len(ids) == len(set(ids))

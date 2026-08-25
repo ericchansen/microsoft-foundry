@@ -161,7 +161,7 @@ line_items:
   - id: contoso-research-input
     component: Contoso Research gpt-5.4-mini input tokens
     billing: azure
-    quantity: 10000000
+    quantity: 3000000
     unit: tokens
     expect_unit_of_measure: 1M
     meter:
@@ -170,13 +170,15 @@ line_items:
       meterName: 5.4 mini Inp Gl 1M Tokens
     source: https://azure.microsoft.com/pricing/details/foundry-models/
     notes: >-
-      10 million uncached input tokens/month on the exact Global Standard
-      gpt-5.4-mini 2026-03-17 deployment declared in azure.yaml.
+      3 million uncached input tokens/month is Research's allocation within the
+      estate-wide allowance for at most four conversations/hour. It is not an
+      additional standalone allowance. The exact Global Standard gpt-5.4-mini
+      2026-03-17 deployment is declared in azure.yaml.
 
   - id: contoso-research-output
     component: Contoso Research gpt-5.4-mini output tokens
     billing: azure
-    quantity: 2000000
+    quantity: 600000
     unit: tokens
     expect_unit_of_measure: 1M
     meter:
@@ -185,8 +187,10 @@ line_items:
       meterName: 5.4 mini Opt Gl 1M Tokens
     source: https://azure.microsoft.com/pricing/details/foundry-models/
     notes: >-
-      2 million output tokens/month on the exact Global Standard gpt-5.4-mini
-      2026-03-17 deployment declared in azure.yaml.
+      0.6 million output tokens/month is Research's allocation within the
+      estate-wide allowance for at most four conversations/hour, not additional
+      standalone capacity. The exact Global Standard gpt-5.4-mini 2026-03-17
+      deployment is declared in azure.yaml.
 
   - id: contoso-research-hosted-compute
     component: Contoso Research hosted-agent compute
