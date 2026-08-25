@@ -103,6 +103,8 @@ def test_container_packages_digest_checked_read_only_canonical_data() -> None:
     assert "contoso.db.sha256" in runtime
     assert "data build --out /tmp/contoso-build" in dockerfile
     assert "chmod 0444" in dockerfile
+    assert "HOME=/var/lib/contoso-support" in dockerfile
+    assert "chown 65532:65532 /var/lib/contoso-support" in dockerfile
 
 
 def test_live_workflow_uses_private_runner_and_never_supplies_identity_header() -> None:
