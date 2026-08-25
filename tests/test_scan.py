@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from contoso_foundry import scan
+from contoso_foundry import patterns, scan
 
 REAL_LOOKING_GUID = "3f2a91c4-7b0e-4d18-9c55-1ea6b83d70af"
 
@@ -32,6 +32,19 @@ class TestIdentifierRules:
     def test_catches_an_azure_resource_id(self):
         text = f"/subscriptions/{REAL_LOOKING_GUID}/resourceGroups/rg-x/providers/Microsoft.App/x"
         assert "azure-resource-id" in names(scan.scan_text(text))
+
+    def test_resource_id_match_covers_the_whole_path(self):
+        """The pattern must span the full resource ID, not just the subscription segment.
+
+        Redaction replaces the matched span, so a pattern that stopped at the next
+        `/` would leave the resource group and resource name in the published
+        output while looking like it had been sanitized.
+        """
+        rule = next(r for r in patterns.IDENTIFIER_RULES if r.name == "azure-resource-id")
+        text = f"/subscriptions/{REAL_LOOKING_GUID}/resourceGroups/rg-secret/providers/Microsoft.App/app-secret"
+        matched = rule.pattern.search(text).group(0)
+        assert "rg-secret" in matched
+        assert "app-secret" in matched
 
     def test_allows_documentation_placeholder_guids(self):
         """The all-zero and all-f GUIDs are Microsoft's own doc placeholders.
@@ -110,6 +123,22 @@ class TestScanPath:
 
         assert result.scanned_files == 0
         assert result.ok
+
+    def test_scans_a_directory_named_internal_inside_the_site(self, tmp_path: Path):
+        """`internal` must not be a skip-list entry when walking build output.
+
+        The name earns trust in the *source* tree because it is gitignored. In
+        `site/` it earns nothing — anything there is about to be published, so
+        skipping it would create a silent hole in the publishing gate.
+        """
+        nested = tmp_path / "internal"
+        nested.mkdir()
+        (nested / "leak.html").write_text(REAL_LOOKING_GUID, encoding="utf-8")
+
+        result = scan.scan_path(tmp_path)
+
+        assert result.scanned_files == 1
+        assert not result.ok
 
 
 class TestInternalExclusion:
