@@ -1,0 +1,43 @@
+# ---------------------------------------------------------------------------
+# Identifier-bearing evidence. NEVER commit.
+# `internal/` holds raw discovery output: subscription IDs, tenant IDs, resource
+# IDs, quota numbers, principal object IDs. It is excluded from git and from the
+# MkDocs build. Only sanitized summaries are published.
+# ---------------------------------------------------------------------------
+internal/*
+!internal/README.md
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+azure.auth.json
+
+# Build output
+site/
+dist/
+build/
+*.egg-info/
+
+# Reports produced by the verification scripts
+reports/
+costs/price-cache.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
