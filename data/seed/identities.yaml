@@ -76,7 +76,7 @@ principals:
 
   - principal_oid: OID-APAC-FIELDENG-01
     persona: APAC Field Engineer
-    roles: [ops.read, travel.read, travel.book]
+    roles: [ops.read, customer.read, retail.read, travel.read, travel.book]
     scope_regions: [APAC]
     select:
       region: APAC

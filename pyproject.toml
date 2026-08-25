@@ -26,6 +26,16 @@ docs = [
     "mkdocs-material>=9.5.49,<10",
     "pymdown-extensions>=10.14,<11",
 ]
+field = [
+    "azure-ai-projects>=2.3.0,<3",
+    "azure-identity>=1.24.0,<2",
+    "azure-monitor-opentelemetry>=1.8.0,<2",
+    "fastapi>=0.116.0,<1",
+    "httpx>=0.28.0,<1",
+    "opentelemetry-sdk>=1.38.0,<2",
+    "pydantic-ai-slim[openai]>=2.0.0,<3",
+    "uvicorn[standard]>=0.35.0,<1",
+]
 # Microsoft Presidio is a deep PII detector, and a heavy one: it pulls spaCy and
 # a language model into a project that otherwise runs on PyYAML and requests.
 # It earns its place as an *optional* second opinion over free text, not as a

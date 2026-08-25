@@ -16,9 +16,9 @@
       "sha256": "62bbd23bf0586bf03cc6691ca16132dd6752efd7cb89174851464a361f2bc0ad"
     },
     "csv/identities.csv": {
-      "bytes": 879,
+      "bytes": 905,
       "rows": 8,
-      "sha256": "afaf11d2ec9890a296b3f794df00a278fc96f7fc7bff55c2e64a4ed31e5ca811"
+      "sha256": "159d72b5cb9ae6c6d4562599201e598504f61be33923c5b4528689b5abb3085d"
     },
     "csv/invoices.csv": {
       "bytes": 26967,
@@ -98,7 +98,7 @@
   },
   "as_of": "2026-01-05",
   "build_format_version": 1,
-  "database_dump_sha256": "823b19a8bbc91178cdce17ded63f4776b32cede607d7ab58eb9f9fac30fd7847",
+  "database_dump_sha256": "f92f01e0230bbd1cc30b42c9b798c8ac95e1e5f2dc3c09fb291f4586b2336f13",
   "row_counts": {
     "customers": 200,
     "employees": 300,
