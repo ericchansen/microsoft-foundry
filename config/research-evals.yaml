@@ -1,0 +1,34 @@
+version: 1
+agent_name: contoso-research
+agent_version: 1.0.0
+protocol: responses
+protocol_version: 2.0.0
+persona_route: americas-supply-planner
+
+scenarios:
+  - id: overdue-receivables
+    question: Summarize the overdue invoices visible to me.
+    expected_tools: [orders_search_invoices]
+    expected_rows: [50]
+    answer_contains:
+      - Scoped Contoso evidence
+      - orders_search_invoices returned 50 visible record(s)
+      - server-resolved caller scope
+
+  - id: outstanding-receivables
+    question: What outstanding receivables are visible in my scope?
+    expected_tools:
+      - orders_search_invoices
+      - orders_search_invoices
+      - orders_search_invoices
+    expected_rows: [7, 24, 50]
+    answer_contains:
+      - Scoped Contoso evidence contains 81 record(s)
+      - server-resolved caller scope
+
+  - id: stock-availability
+    question: Research current stock availability.
+    expected_tools: [catalog_check_stock]
+    expected_rows: [100]
+    answer_contains:
+      - catalog_check_stock returned 100 visible record(s)
