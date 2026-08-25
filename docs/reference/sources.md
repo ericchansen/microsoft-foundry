@@ -15,6 +15,7 @@ relying on one.
 | Agent Service overview | <https://learn.microsoft.com/azure/foundry/agents/overview> |
 | Agent Service limits, quotas and regions | <https://learn.microsoft.com/azure/foundry/agents/concepts/limits-quotas-regions> |
 | Model quotas and limits | <https://learn.microsoft.com/azure/foundry/openai/quotas-limits> |
+| External-agent registration and limitations (public preview) | <https://learn.microsoft.com/azure/foundry/agents/how-to/register-external-agent> |
 
 Model quota is **subscription-level**, and Global Standard deployments draw from
 a single pool shared across regions. A region can therefore pass a model
@@ -32,6 +33,12 @@ and quota are separate gates.
 The v2 tiers are available in a **narrower** set of regions than API Management
 itself. The region availability page is the authority, not the resource
 provider's location list.
+
+## Azure role-based access control
+
+| Topic | Source |
+| --- | --- |
+| List role assignments with Azure CLI | <https://learn.microsoft.com/azure/role-based-access-control/role-assignments-list-cli#list-role-assignments-for-a-subscription> |
 
 ## Azure SRE Agent
 
@@ -64,6 +71,9 @@ meter. See [Cost model](../platform/costs.md).
 | --- | --- |
 | FAQ, including the region query | <https://learn.microsoft.com/azure/container-apps/faq> |
 | Pricing, including free grants | <https://azure.microsoft.com/pricing/details/container-apps/> |
+| Security | <https://learn.microsoft.com/azure/container-apps/security> |
+| Managed identities | <https://learn.microsoft.com/azure/container-apps/managed-identity> |
+| Scaling and scale-to-zero | <https://learn.microsoft.com/azure/container-apps/scale-app> |
 
 There is no static region page. The documented method is to query the resource
 provider, which is what region selection does.
@@ -77,6 +87,15 @@ appear in a Retail Prices API response. The cost model subtracts them explicitly
 | --- | --- |
 | Log Analytics cost calculations | <https://learn.microsoft.com/azure/azure-monitor/logs/cost-logs> |
 | Pricing | <https://azure.microsoft.com/pricing/details/monitor/> |
+| Azure Monitor OpenTelemetry configuration | <https://learn.microsoft.com/azure/azure-monitor/app/opentelemetry-configuration?tabs=python> |
+
+## Azure Kubernetes Service
+
+| Topic | Source |
+| --- | --- |
+| Microsoft Entra Workload ID | <https://learn.microsoft.com/azure/aks/workload-identity-overview> |
+| Azure Key Vault Secrets Store CSI Driver | <https://learn.microsoft.com/azure/aks/csi-secrets-store-driver> |
+| CSI Driver identity access | <https://learn.microsoft.com/azure/aks/csi-secrets-store-identity-access> |
 
 ## Pricing API
 
@@ -135,3 +154,4 @@ the United States.
 | Material for MkDocs diagrams | <https://squidfunk.github.io/mkdocs-material/reference/diagrams/> |
 | Publishing a Material site | <https://squidfunk.github.io/mkdocs-material/publishing-your-site/> |
 | GitHub Pages custom workflows | <https://docs.github.com/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages> |
+| Pydantic AI OpenTelemetry instrumentation | <https://ai.pydantic.dev/logfire/> |

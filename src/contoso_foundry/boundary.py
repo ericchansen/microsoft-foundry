@@ -81,6 +81,125 @@ def _iter_scoped_entries(plan: dict[str, Any]) -> list[tuple[str, dict[str, Any]
     return entries
 
 
+def _relative_live_scope(resource_id: str, resource_group: str) -> str:
+    normalized = resource_id.strip().lower().rstrip("/")
+    marker = f"/resourcegroups/{resource_group.lower()}"
+    marker_index = normalized.find(marker)
+    if marker_index < 0:
+        return normalized
+    suffix = normalized[marker_index + len(marker) :]
+    if suffix and not suffix.startswith("/"):
+        return normalized
+    relative = suffix.lstrip("/")
+    return relative or "."
+
+
+def _principal_id(resource: dict[str, Any]) -> str | None:
+    identity = resource.get("identity") or {}
+    properties = resource.get("properties") or {}
+    for value in (
+        resource.get("principalId"),
+        identity.get("principalId"),
+        properties.get("principalId"),
+    ):
+        if value:
+            return str(value).lower()
+    return None
+
+
+def _check_live_role_assignments(
+    report: BoundaryReport,
+    plan: dict[str, Any],
+    live_resources: dict[str, dict[str, Any]],
+    assignments: list[dict[str, Any]],
+) -> None:
+    declared_entries = {
+        str(entry.get("name")): str(entry.get("scope", "")).lower()
+        for section, entry in _iter_scoped_entries(plan)
+        if section in {"resources", "identities"}
+    }
+    expected: dict[tuple[str, str, str], str] = {}
+    principal_aliases: dict[str, str] = {}
+
+    for assignment in plan.get("role_assignments", []) or []:
+        assignment_name = str(assignment.get("name", "<unnamed>"))
+        principal_alias = str(assignment.get("principal", ""))
+        principal_pattern = declared_entries.get(principal_alias)
+        if not principal_pattern:
+            report.fail(
+                "live:declared-role-assignments",
+                assignment_name,
+                f"principal {principal_alias!r} is not a declared resource or identity",
+            )
+            continue
+
+        matching_principals = {
+            principal
+            for scope, resource in live_resources.items()
+            if fnmatchcase(scope, principal_pattern) and (principal := _principal_id(resource))
+        }
+        if len(matching_principals) != 1:
+            report.fail(
+                "live:declared-role-assignments",
+                assignment_name,
+                f"principal {principal_alias!r} resolved to {len(matching_principals)} live principal IDs",
+            )
+            continue
+        principal_id = next(iter(matching_principals))
+        principal_aliases[principal_id] = principal_alias
+
+        scope_pattern = str(assignment.get("scope", "")).lower()
+        matching_scopes = (
+            {"."}
+            if scope_pattern == "."
+            else {scope for scope in live_resources if fnmatchcase(scope, scope_pattern)}
+        )
+        if len(matching_scopes) != 1:
+            report.fail(
+                "live:declared-role-assignments",
+                assignment_name,
+                f"scope {scope_pattern!r} resolved to {len(matching_scopes)} live resources",
+            )
+            continue
+        resolved_scope = next(iter(matching_scopes))
+        role = str(assignment.get("role", "")).lower()
+        expected[(principal_id, role, resolved_scope)] = (
+            f"{principal_alias}:{assignment.get('role')}@{resolved_scope}"
+        )
+
+    actual: dict[tuple[str, str, str], str] = {}
+    for assignment in assignments:
+        principal_id = str(assignment.get("principalId", "")).lower()
+        role = str(assignment.get("roleDefinitionName", "")).lower()
+        scope = _relative_live_scope(str(assignment.get("scope", "")), report.resource_group)
+        if not principal_id or not role or not scope:
+            report.fail(
+                "live:declared-role-assignments",
+                "<malformed>",
+                "Azure returned a role assignment without principalId, roleDefinitionName, or scope",
+            )
+            continue
+        if scope.startswith("/"):
+            if principal_id in principal_aliases:
+                report.fail(
+                    "live:declared-role-assignments",
+                    principal_aliases[principal_id],
+                    f"has an out-of-bound live {assignment.get('roleDefinitionName')} assignment",
+                )
+            continue
+        principal = principal_aliases.get(principal_id, "<undeclared-principal>")
+        actual[(principal_id, role, scope)] = f"{principal}:{assignment.get('roleDefinitionName')}@{scope}"
+
+    missing = sorted(expected[key] for key in expected.keys() - actual.keys())
+    unexpected = sorted(actual[key] for key in actual.keys() - expected.keys())
+    if missing or unexpected:
+        report.fail(
+            "live:declared-role-assignments",
+            report.resource_group,
+            f"role assignment inventory differs from the plan; missing={missing}, unexpected={unexpected}",
+        )
+
+
 def check_plan(plan: dict[str, Any], *, expected_resource_group: str | None = None) -> BoundaryReport:
     """Static validation. Requires no credentials, so CI always runs it."""
     declared_rg = str(plan.get("resource_group", ""))
@@ -220,27 +339,91 @@ def check_live(report: BoundaryReport, plan: dict[str, Any]) -> BoundaryReport:
                 "already exists and the plan does not permit a previously verified project-owned group",
             )
         else:
+            report.checks_run.append("live:declared-resource-inventory")
             declared_scopes = [
-                str(entry.get("scope", "")).lower()
-                for section, entry in _iter_scoped_entries(plan)
-                if section in {"resources", "identities"}
+                (
+                    f"{section}/{entry.get('name', '<unnamed>')}[{index}]",
+                    str(entry.get("scope", "")).lower(),
+                )
+                for section in ("resources", "identities")
+                for index, entry in enumerate(plan.get(section, []) or [])
             ]
-            marker = f"/resourcegroups/{report.resource_group.lower()}/"
-            unexpected: list[str] = []
-            for resource in resources:
-                resource_id = str(resource.get("id", "")).lower()
-                if marker not in resource_id:
-                    unexpected.append(resource_id or str(resource.get("name", "<unnamed>")))
-                    continue
-                relative_scope = resource_id.split(marker, maxsplit=1)[1]
-                if not any(fnmatchcase(relative_scope, pattern) for pattern in declared_scopes):
-                    unexpected.append(relative_scope)
-            if unexpected:
+            live_resources = {
+                _relative_live_scope(str(resource.get("id", "")), report.resource_group): resource
+                for resource in resources
+            }
+            declaration_matches = {
+                subject: sorted(
+                    scope for scope in live_resources if fnmatchcase(scope, pattern)
+                )
+                for subject, pattern in declared_scopes
+            }
+            resource_matches = {
+                scope: sorted(
+                    subject
+                    for subject, pattern in declared_scopes
+                    if fnmatchcase(scope, pattern)
+                )
+                for scope in live_resources
+            }
+            invalid_declarations = {
+                subject: matches
+                for subject, matches in declaration_matches.items()
+                if len(matches) != 1
+            }
+            invalid_resources = {
+                scope: matches
+                for scope, matches in resource_matches.items()
+                if len(matches) != 1
+            }
+            if invalid_declarations or invalid_resources:
                 report.fail(
                     "live:declared-resource-inventory",
                     report.resource_group,
-                    f"contains resources not declared by the ownership plan: {sorted(unexpected)}",
+                    "resource inventory is not one-to-one with the plan; "
+                    f"declaration_matches={invalid_declarations}, "
+                    f"resource_matches={invalid_resources}",
                 )
+
+            identities = azure_cli.try_run(
+                ["identity", "list", "--resource-group", report.resource_group],
+                default=[],
+            ) or []
+            for identity in identities:
+                live_resources[_relative_live_scope(str(identity.get("id", "")), report.resource_group)] = identity
+
+            declared_by_name = {
+                str(entry.get("name")): str(entry.get("scope", "")).lower()
+                for section, entry in _iter_scoped_entries(plan)
+                if section in {"resources", "identities"}
+            }
+            referenced_principals = {
+                str(assignment.get("principal", ""))
+                for assignment in plan.get("role_assignments", []) or []
+            }
+            for principal_alias in referenced_principals:
+                principal_pattern = declared_by_name.get(principal_alias, "")
+                for scope, resource in list(live_resources.items()):
+                    resource_id = str(resource.get("id", ""))
+                    if (
+                        principal_pattern
+                        and fnmatchcase(scope, principal_pattern)
+                        and not _principal_id(resource)
+                        and resource_id
+                    ):
+                        detailed = azure_cli.try_run(
+                            ["resource", "show", "--ids", resource_id],
+                            default={},
+                        ) or {}
+                        if isinstance(detailed, dict):
+                            live_resources[scope] = detailed
+
+            report.checks_run.append("live:declared-role-assignments")
+            subscription_assignments = azure_cli.try_run(
+                ["role", "assignment", "list", "--all"],
+                default=[],
+            ) or []
+            _check_live_role_assignments(report, plan, live_resources, subscription_assignments)
     return report
 
 

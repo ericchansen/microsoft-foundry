@@ -31,7 +31,7 @@ jobs:
           cache: pip
 
       - name: Install
-        run: pip install -e ".[dev,docs]"
+        run: pip install -e ".[dev,docs,field]"
 
       - name: Ruff
         run: ruff check .

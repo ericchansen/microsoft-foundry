@@ -158,16 +158,36 @@ class TestExistingGroupOwnership:
     }
 
     @staticmethod
-    def _patch_live(monkeypatch, *, tags, resources):
+    def _patch_live(
+        monkeypatch,
+        *,
+        tags,
+        resources,
+        identities=None,
+        role_assignments=None,
+        resource_details=None,
+    ):
         monkeypatch.setattr(
             boundary.azure_cli,
             "run",
             lambda _args: [{"name": RG, "tags": tags}],
         )
+
+        def try_run(arguments, **_kwargs):
+            if arguments[:2] == ["resource", "list"]:
+                return resources
+            if arguments[:2] == ["identity", "list"]:
+                return identities or []
+            if arguments[:2] == ["resource", "show"]:
+                return (resource_details or {}).get(arguments[-1], {})
+            if arguments[:3] == ["role", "assignment", "list"]:
+                return role_assignments or []
+            raise AssertionError(f"unexpected Azure CLI read: {arguments}")
+
         monkeypatch.setattr(
             boundary.azure_cli,
             "try_run",
-            lambda _args, **_kwargs: resources,
+            try_run,
         )
 
     def owned_plan(self):
@@ -180,6 +200,8 @@ class TestExistingGroupOwnership:
                     "scope": "providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry",
                 }
             ],
+            identities=[],
+            role_assignments=[],
         )
 
     def test_accepts_only_matching_tags_and_declared_resources(self, monkeypatch):
@@ -209,3 +231,236 @@ class TestExistingGroupOwnership:
         self._patch_live(monkeypatch, tags=self.OWNERSHIP_TAGS, resources=resources)
         report = boundary.check_live(boundary.check_plan(self.owned_plan()), self.owned_plan())
         assert "live:declared-resource-inventory" in failed_checks(report)
+
+    def test_rejects_a_missing_declared_resource(self, monkeypatch):
+        self._patch_live(monkeypatch, tags=self.OWNERSHIP_TAGS, resources=[])
+        report = boundary.check_live(boundary.check_plan(self.owned_plan()), self.owned_plan())
+        assert "live:declared-resource-inventory" in failed_checks(report)
+        assert "resources/foundry" in str(report.violations[-1])
+
+    def test_rejects_multiple_resources_absorbed_by_one_wildcard(self, monkeypatch):
+        plan_data = plan(
+            allow_existing_resource_group=True,
+            tags=self.OWNERSHIP_TAGS,
+            resources=[
+                {
+                    "name": "registry",
+                    "scope": "providers/Microsoft.ContainerRegistry/registries/contosoagents*",
+                }
+            ],
+            identities=[],
+            role_assignments=[],
+        )
+        resources = [
+            {
+                "id": (
+                    "/subscriptions/redacted/resourceGroups/rg-contoso-agents/providers/"
+                    "Microsoft.ContainerRegistry/registries/contosoagentsone"
+                )
+            },
+            {
+                "id": (
+                    "/subscriptions/redacted/resourceGroups/rg-contoso-agents/providers/"
+                    "Microsoft.ContainerRegistry/registries/contosoagentstwo"
+                )
+            },
+        ]
+        self._patch_live(monkeypatch, tags=self.OWNERSHIP_TAGS, resources=resources)
+
+        report = boundary.check_live(boundary.check_plan(plan_data), plan_data)
+
+        assert "live:declared-resource-inventory" in failed_checks(report)
+        assert "resources/registry" in str(report.violations[-1])
+
+    def test_rejects_overlapping_declarations_for_one_resource(self, monkeypatch):
+        plan_data = plan(
+            allow_existing_resource_group=True,
+            tags=self.OWNERSHIP_TAGS,
+            resources=[
+                {
+                    "name": "registry-pattern",
+                    "scope": "providers/Microsoft.ContainerRegistry/registries/contosoagents*",
+                },
+                {
+                    "name": "registry-exact",
+                    "scope": "providers/Microsoft.ContainerRegistry/registries/contosoagentsone",
+                },
+            ],
+            identities=[],
+            role_assignments=[],
+        )
+        resource = {
+            "id": (
+                "/subscriptions/redacted/resourceGroups/rg-contoso-agents/providers/"
+                "Microsoft.ContainerRegistry/registries/contosoagentsone"
+            )
+        }
+        self._patch_live(monkeypatch, tags=self.OWNERSHIP_TAGS, resources=[resource])
+
+        report = boundary.check_live(boundary.check_plan(plan_data), plan_data)
+
+        assert "live:declared-resource-inventory" in failed_checks(report)
+        assert "resources/registry-pattern" in str(report.violations[-1])
+        assert "resources/registry-exact" in str(report.violations[-1])
+
+    def test_rejects_duplicate_declarations_even_when_names_match(self, monkeypatch):
+        declaration = {
+            "name": "registry",
+            "scope": "providers/Microsoft.ContainerRegistry/registries/contosoagentsone",
+        }
+        plan_data = plan(
+            allow_existing_resource_group=True,
+            tags=self.OWNERSHIP_TAGS,
+            resources=[declaration, declaration],
+            identities=[],
+            role_assignments=[],
+        )
+        resource = {
+            "id": (
+                "/subscriptions/redacted/resourceGroups/rg-contoso-agents/providers/"
+                "Microsoft.ContainerRegistry/registries/contosoagentsone"
+            )
+        }
+        self._patch_live(monkeypatch, tags=self.OWNERSHIP_TAGS, resources=[resource])
+
+        report = boundary.check_live(boundary.check_plan(plan_data), plan_data)
+
+        assert "live:declared-resource-inventory" in failed_checks(report)
+        assert "resources/registry[0]" in str(report.violations[-1])
+        assert "resources/registry[1]" in str(report.violations[-1])
+
+
+class TestExistingGroupRoleAssignments:
+    OWNERSHIP_TAGS = TestExistingGroupOwnership.OWNERSHIP_TAGS
+    IDENTITY_ID = (
+        "/subscriptions/redacted/resourceGroups/rg-contoso-agents/providers/"
+        "Microsoft.ManagedIdentity/userAssignedIdentities/field-runtime"
+    )
+    FOUNDRY_ID = (
+        "/subscriptions/redacted/resourceGroups/rg-contoso-agents/providers/"
+        "Microsoft.CognitiveServices/accounts/contoso-agents-foundry"
+    )
+
+    def owned_plan(self):
+        return plan(
+            allow_existing_resource_group=True,
+            tags=self.OWNERSHIP_TAGS,
+            resources=[
+                {
+                    "name": "foundry",
+                    "scope": "providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry",
+                }
+            ],
+            identities=[
+                {
+                    "name": "field-runtime",
+                    "scope": "providers/Microsoft.ManagedIdentity/userAssignedIdentities/field-runtime",
+                }
+            ],
+            role_assignments=[
+                {
+                    "name": "field-uses-foundry",
+                    "principal": "field-runtime",
+                    "role": "Foundry User",
+                    "scope": "providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry",
+                }
+            ],
+        )
+
+    def resources(self):
+        return [
+            {"id": self.FOUNDRY_ID},
+            {
+                "id": self.IDENTITY_ID,
+                "identity": {"principalId": "principal-field"},
+            },
+        ]
+
+    def assignment(self, *, role="Foundry User", scope=None, principal="principal-field"):
+        return {
+            "principalId": principal,
+            "roleDefinitionName": role,
+            "scope": scope or self.FOUNDRY_ID,
+        }
+
+    def check(self, monkeypatch, assignments):
+        TestExistingGroupOwnership._patch_live(
+            monkeypatch,
+            tags=self.OWNERSHIP_TAGS,
+            resources=self.resources(),
+            identities=[self.resources()[1]],
+            role_assignments=assignments,
+        )
+        plan_data = self.owned_plan()
+        return boundary.check_live(boundary.check_plan(plan_data), plan_data)
+
+    def test_accepts_exact_declared_role_principal_and_scope(self, monkeypatch):
+        assert self.check(monkeypatch, [self.assignment()]).ok
+
+    def test_ignores_assignments_in_a_prefix_named_sibling_group(self, monkeypatch):
+        sibling_scope = (
+            "/subscriptions/redacted/resourceGroups/rg-contoso-agents-staging/providers/"
+            "Microsoft.CognitiveServices/accounts/unrelated"
+        )
+        assignments = [
+            self.assignment(),
+            {
+                "principalId": "unrelated-principal",
+                "roleDefinitionName": "Reader",
+                "scope": sibling_scope,
+            },
+        ]
+        assert self.check(monkeypatch, assignments).ok
+
+    def test_resolves_a_system_assigned_principal_from_resource_details(self, monkeypatch):
+        plan_data = plan(
+            allow_existing_resource_group=True,
+            tags=self.OWNERSHIP_TAGS,
+            resources=[
+                {
+                    "name": "foundry",
+                    "scope": "providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry",
+                }
+            ],
+            identities=[],
+            role_assignments=[
+                {
+                    "name": "foundry-reads-self",
+                    "principal": "foundry",
+                    "role": "Reader",
+                    "scope": "providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry",
+                }
+            ],
+        )
+        TestExistingGroupOwnership._patch_live(
+            monkeypatch,
+            tags=self.OWNERSHIP_TAGS,
+            resources=[{"id": self.FOUNDRY_ID}],
+            role_assignments=[
+                {
+                    "principalId": "principal-foundry",
+                    "roleDefinitionName": "Reader",
+                    "scope": self.FOUNDRY_ID,
+                }
+            ],
+            resource_details={
+                self.FOUNDRY_ID: {
+                    "id": self.FOUNDRY_ID,
+                    "identity": {"principalId": "principal-foundry"},
+                }
+            },
+        )
+        assert boundary.check_live(boundary.check_plan(plan_data), plan_data).ok
+
+    @pytest.mark.parametrize(
+        "assignments",
+        [
+            [],
+            [{"principalId": "principal-field", "roleDefinitionName": "Reader", "scope": FOUNDRY_ID}],
+            [{"principalId": "principal-field", "roleDefinitionName": "Foundry User", "scope": "/"}],
+            [{"principalId": "other-principal", "roleDefinitionName": "Foundry User", "scope": FOUNDRY_ID}],
+        ],
+    )
+    def test_rejects_missing_or_inexact_role_assignments(self, monkeypatch, assignments):
+        report = self.check(monkeypatch, assignments)
+        assert "live:declared-role-assignments" in failed_checks(report)

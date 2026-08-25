@@ -9,6 +9,8 @@ from typing import Annotated
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from contoso_foundry.toolbox.tools import ToolError
+
 from .runtime import FieldService
 from .settings import FieldSettings
 from .telemetry import configure_telemetry, flush_telemetry
@@ -53,7 +55,7 @@ def create_app() -> FastAPI:
         service: FieldService = application.state.field_service
         try:
             output = await service.run(request.input)
-        except (PermissionError, ValueError) as error:
+        except (PermissionError, ToolError, ValueError) as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
         return FieldResponse(
             agent=service.settings.agent_name,

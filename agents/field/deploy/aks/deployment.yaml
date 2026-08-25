@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: contoso-field
+  namespace: contoso-agents
+  labels:
+    app.kubernetes.io/name: contoso-field
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: contoso-field
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: contoso-field
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: contoso-field
+      automountServiceAccountToken: true
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: field
+          image: example.invalid/contoso-field:replace-me
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            - name: APPLICATIONINSIGHTS_AUTHENTICATION_STRING
+              value: Authorization=AAD
+            - name: AZURE_OPENAI_ENDPOINT
+              value: ${AZURE_OPENAI_ENDPOINT}
+            - name: FIELD_AGENT_NAME
+              value: contoso-field
+            - name: FIELD_DATA_DIR
+              value: /var/lib/contoso-field
+            - name: FIELD_OTEL_AGENT_ID
+              value: contoso-field-v1
+            - name: FIELD_MODEL_DEPLOYMENT
+              value: contoso-field-model
+            - name: FIELD_RUNTIME_CONFIG_FILE
+              value: /mnt/secrets-store/field-runtime-config
+            - name: FIELD_ENRICH_AGENT_ID
+              value: "false"
+            - name: OTEL_SERVICE_NAME
+              value: contoso-field
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          volumeMounts:
+            - name: field-data
+              mountPath: /var/lib/contoso-field
+            - name: secrets-store
+              mountPath: /mnt/secrets-store
+              readOnly: true
+      volumes:
+        - name: field-data
+          emptyDir: {}
+        - name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: contoso-field

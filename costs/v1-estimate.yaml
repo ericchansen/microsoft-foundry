@@ -98,6 +98,39 @@ line_items:
     source: https://azure.microsoft.com/pricing/details/container-apps/
     notes: 5 million requests/month minus the documented 2 million free grant = 3 million billable.
 
+  - id: field-model-input
+    component: Contoso Field GPT-4.1 mini input
+    billing: azure
+    quantity: 1000000
+    unit: tokens
+    expect_unit_of_measure: 1K
+    meter:
+      serviceName: Foundry Models
+      skuName: 4.1 mini pp Inp Gl
+      meterName: 4.1 mini pp Inp Gl Tokens
+    source: https://azure.microsoft.com/pricing/details/ai-foundry/
+    notes: >-
+      1 million input tokens/month for the scale-to-zero field agent. Field takes
+      a sparse heartbeat share of the estate-wide cap of at most 4 conversations
+      per hour. Container Apps consumption stays in the shared ACA aggregate lines
+      above rather than being counted again here.
+
+  - id: field-model-output
+    component: Contoso Field GPT-4.1 mini output
+    billing: azure
+    quantity: 200000
+    unit: tokens
+    expect_unit_of_measure: 1K
+    meter:
+      serviceName: Foundry Models
+      skuName: gpt 4.1 mini Outp glbl
+      meterName: gpt 4.1 mini Outp glbl Tokens
+    source: https://azure.microsoft.com/pricing/details/ai-foundry/
+    notes: >-
+      200,000 output tokens/month for Field's sparse share of the estate-wide
+      conversation cap. The output allowance is priced separately because the
+      Retail Prices API publishes a distinct Global Standard meter.
+
   - id: logic-apps-agent-input
     component: Logic Apps agent loop — input tokens
     billing: azure

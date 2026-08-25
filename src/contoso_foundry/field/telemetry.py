@@ -16,6 +16,8 @@ from .settings import FieldSettings
 
 GEN_AI_AGENT_ID = "gen_ai.agent.id"
 PYDANTIC_AI_SCOPE = "pydantic-ai"
+SMOKE_CORRELATION_ID = "contoso.field.smoke.correlation_id"
+SMOKE_REVISION = "contoso.field.smoke.revision"
 
 _configured = False
 

@@ -77,6 +77,8 @@ nav:
       - Data spine: data/overview.md
       - Provenance: data/provenance.md
       - Toolbox contracts: data/toolbox.md
+  - Agents:
+      - Contoso Field: agents/field.md
   - Platform decisions:
       - Region selection: platform/regions.md
       - Cost model: platform/costs.md

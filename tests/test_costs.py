@@ -268,6 +268,13 @@ class TestShippedEstimate:
         assert studio, "the estimate must account for Copilot Studio capacity"
         assert all(i["billing"] == "external" for i in studio)
 
+    def test_field_uses_its_sparse_estate_share_without_duplicate_aca(self, estimate):
+        items = {item["id"]: item for item in estimate["line_items"]}
+        assert items["field-model-input"]["quantity"] == 1_000_000
+        assert items["field-model-output"]["quantity"] == 200_000
+        assert "4 conversations" in items["field-model-input"]["notes"]
+        assert not any(item_id.startswith("field-aca") for item_id in items)
+
     def test_line_item_ids_are_unique(self, estimate):
         ids = [i["id"] for i in estimate["line_items"]]
         assert len(ids) == len(set(ids))

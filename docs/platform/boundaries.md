@@ -10,6 +10,9 @@ makes that safe is simple:
 `foundry boundary` enforces it mechanically, and refuses to create the resource
 group if any check fails.
 
+The live RBAC comparison uses the principal, role and scope fields returned by
+the documented [Azure CLI role-assignment listing](https://learn.microsoft.com/azure/role-based-access-control/role-assignments-list-cli#list-role-assignments-for-a-subscription).
+
 ## Why a check instead of a convention
 
 A convention holds until someone is in a hurry. Three failure modes are worth
@@ -32,7 +35,9 @@ promise that deleting one resource group removes the platform.
 | `plan:no-reuse` | No identity is marked for reuse; every identity is created inside the boundary. |
 | `plan:role-assignment-scopes` | No role assignment is scoped at subscription or management-group level. |
 | `plan:teardown-completeness` | Every declared resource is covered by a teardown target. |
-| `live:existing-resource-group` | The resource group either does not exist, or is empty and adoption is explicitly permitted. |
+| `live:target-ownership-tags` | An existing resource group carries every project ownership tag declared by the plan. |
+| `live:declared-resource-inventory` | The live inventory is one-to-one: every declaration resolves to exactly one resource, and every live resource resolves to exactly one declaration. Zero matches, wildcard duplicates and overlapping declarations fail. |
+| `live:declared-role-assignments` | Live role assignments match the declared principal, role and resource-relative scope exactly; missing and unexpected assignments fail. |
 | `live:protected-resource-groups` | Every other resource group in the subscription is enumerated and recorded as read-only. |
 
 ## Relative scopes are the load-bearing idea
@@ -85,9 +90,10 @@ resource group" is never mistaken for complete cleanup.
 
 ## Current state
 
-The most recent run confirms the target resource group **does not yet exist**, so
-the boundary is clean and no pre-existing resource is at risk of adoption. Phase 0
-provisions nothing.
+The live result is deliberately generated rather than asserted in this page.
+`foundry boundary` inventories the current resource group and role assignments on
+each run; identifier-bearing evidence belongs in ignored `internal/`, never in
+the public documentation.
 
 ## Re-running it
 

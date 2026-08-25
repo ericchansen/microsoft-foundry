@@ -63,6 +63,15 @@ resources:
   - name: container-registry
     kind: Microsoft.ContainerRegistry/registries
     scope: providers/Microsoft.ContainerRegistry/registries/contosoagents*
+  - name: field-model-deployment
+    kind: Microsoft.CognitiveServices/accounts/deployments
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/deployments/contoso-field-model
+  - name: field-container-environment
+    kind: Microsoft.App/managedEnvironments
+    scope: providers/Microsoft.App/managedEnvironments/contoso-field-env
+  - name: field-container-app
+    kind: Microsoft.App/containerApps
+    scope: providers/Microsoft.App/containerApps/contoso-field
   - name: action-group
     kind: Microsoft.Insights/actionGroups
     scope: providers/Microsoft.Insights/actionGroups/contoso-agents-alerts
@@ -81,6 +90,10 @@ identities:
     kind: Microsoft.ManagedIdentity/userAssignedIdentities
     scope: providers/Microsoft.ManagedIdentity/userAssignedIdentities/contoso-agents-github-deploy
     reuse_existing: false
+  - name: field-runtime-identity
+    kind: Microsoft.ManagedIdentity/userAssignedIdentities
+    scope: providers/Microsoft.ManagedIdentity/userAssignedIdentities/contoso-field-runtime
+    reuse_existing: false
 
 # Role assignments. Every scope is inside the resource group; nothing is granted
 # at subscription or management-group level.
@@ -97,6 +110,18 @@ role_assignments:
     role: Role Based Access Control Administrator
     principal: github-deploy-identity
     scope: .
+  - name: field-pulls-images
+    role: AcrPull
+    principal: field-runtime-identity
+    scope: providers/Microsoft.ContainerRegistry/registries/contosoagents*
+  - name: field-invokes-foundry
+    role: Foundry User
+    principal: field-runtime-identity
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry
+  - name: field-publishes-monitoring
+    role: Monitoring Metrics Publisher
+    principal: field-runtime-identity
+    scope: providers/microsoft.insights/components/contoso-agents-insights
   - name: travel-reads-logs
     role: Log Analytics Reader
     principal: travel-project

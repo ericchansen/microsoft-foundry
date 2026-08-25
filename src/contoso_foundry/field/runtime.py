@@ -9,14 +9,14 @@ from typing import Any
 
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from openai import AsyncAzureOpenAI
-from pydantic_ai import Agent, RunContext
+from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.models import Model
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
 from contoso_foundry.data.build import build
 from contoso_foundry.toolbox.identity import principal_from_fixture
-from contoso_foundry.toolbox.tools import Toolbox
+from contoso_foundry.toolbox.tools import Toolbox, ToolError
 
 from .settings import FieldSettings
 
@@ -32,6 +32,13 @@ This agent is read-only: it can inspect and summarize work but cannot dispatch, 
 @dataclass(frozen=True)
 class FieldDependencies:
     toolbox: Toolbox
+
+
+def _call_toolbox(toolbox: Toolbox, name: str, arguments: dict[str, Any]) -> Any:
+    try:
+        return toolbox.call(name, arguments)
+    except ToolError as error:
+        raise ModelRetry(str(error)) from error
 
 
 def _azure_model(settings: FieldSettings) -> Model:
@@ -62,7 +69,7 @@ def create_agent(settings: FieldSettings, *, model: Model | None = None) -> Agen
     @agent.tool
     async def lookup_work_order(ctx: RunContext[FieldDependencies], work_order_id: str) -> dict[str, Any] | None:
         """Look up one canonical work order visible to this field-service identity."""
-        return ctx.deps.toolbox.call("operations_lookup_work_order", {"work_order_id": work_order_id})
+        return _call_toolbox(ctx.deps.toolbox, "operations_lookup_work_order", {"work_order_id": work_order_id})
 
     @agent.tool
     async def search_work_orders(
@@ -83,7 +90,7 @@ def create_agent(settings: FieldSettings, *, model: Model | None = None) -> Agen
             }.items()
             if value is not None
         }
-        return ctx.deps.toolbox.call("operations_search_work_orders", arguments)
+        return _call_toolbox(ctx.deps.toolbox, "operations_search_work_orders", arguments)
 
     @agent.tool
     async def list_locations(
@@ -98,17 +105,17 @@ def create_agent(settings: FieldSettings, *, model: Model | None = None) -> Agen
             for key, value in {"country": country, "kind": kind, "limit": limit}.items()
             if value is not None
         }
-        return ctx.deps.toolbox.call("operations_list_locations", arguments)
+        return _call_toolbox(ctx.deps.toolbox, "operations_list_locations", arguments)
 
     @agent.tool
     async def lookup_product(ctx: RunContext[FieldDependencies], product_id: str) -> dict[str, Any] | None:
         """Look up the canonical product referenced by a work order."""
-        return ctx.deps.toolbox.call("catalog_lookup_product", {"product_id": product_id})
+        return _call_toolbox(ctx.deps.toolbox, "catalog_lookup_product", {"product_id": product_id})
 
     @agent.tool
     async def lookup_customer(ctx: RunContext[FieldDependencies], customer_id: str) -> dict[str, Any] | None:
         """Look up the in-scope canonical customer referenced by a work order."""
-        return ctx.deps.toolbox.call("customer_lookup", {"customer_id": customer_id})
+        return _call_toolbox(ctx.deps.toolbox, "customer_lookup", {"customer_id": customer_id})
 
     return agent
 
