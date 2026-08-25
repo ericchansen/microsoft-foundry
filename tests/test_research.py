@@ -2,14 +2,31 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+from azure.ai.agentserver.core.platform_headers import FOUNDRY_CALL_ID
+from langchain_azure_ai.agents.hosting import ResponsesHostServer
 from langchain_core.messages import HumanMessage
 
+from contoso_foundry import azure_cli
+from contoso_foundry.research.deployment import (
+    DeploymentBoundaryError,
+    target_from_boundary,
+    verify_arm_target,
+    verify_deployment_target,
+)
 from contoso_foundry.research.evaluate import EvaluationError, run_evaluations
 from contoso_foundry.research.planner import ResearchPlanError, plan_question
+from contoso_foundry.research.request_context import (
+    EVALUATION_USER_ROUTES,
+    HostedIdentityError,
+    load_trusted_user_routes,
+    resolve_trusted_request,
+)
 from contoso_foundry.research.runtime import build_runtime, runtime_from_environment
 from contoso_foundry.research.synthesis import SynthesisError, deterministic_synthesizer, model_synthesizer
 from contoso_foundry.research.workflow import (
@@ -23,11 +40,7 @@ from contoso_foundry.research.workflow import (
 
 @pytest.fixture
 def runtime(repo_root: Path):
-    value = build_runtime(
-        repo_root,
-        persona_route="americas-supply-planner",
-        expected_version=AGENT_VERSION,
-    )
+    value = build_runtime(repo_root, expected_version=AGENT_VERSION)
     try:
         yield value
     finally:
@@ -35,8 +48,21 @@ def runtime(repo_root: Path):
 
 
 def test_graph_exposes_planner_retrieval_synthesis_state(runtime) -> None:
-    graph = build_research_graph(runtime.toolbox, deterministic_synthesizer)
-    result = graph.invoke({"messages": [HumanMessage(content="Summarize overdue invoices visible to me.")]})
+    graph = build_research_graph(runtime, deterministic_synthesizer)
+    trusted = resolve_trusted_request(
+        SimpleNamespace(
+            user_id_key="contoso-user-americas-supply-planner",
+            call_id="call-transparent-state",
+        ),
+        EVALUATION_USER_ROUTES,
+    )
+    result = graph.invoke(
+        {
+            "messages": [HumanMessage(content="Summarize overdue invoices visible to me.")],
+            "caller_route": trusted.caller_route,
+            "call_id": trusted.call_id,
+        }
+    )
 
     assert result["question"] == "Summarize overdue invoices visible to me."
     assert result["plan"] == [
@@ -52,6 +78,8 @@ def test_graph_exposes_planner_retrieval_synthesis_state(runtime) -> None:
         }
     ]
     assert result["messages"][-1].content == result["answer"]
+    assert result["caller_route"] == "americas-supply-planner"
+    assert result["call_id"] == "call-transparent-state"
 
 
 def test_planner_uses_exact_canonical_ids() -> None:
@@ -65,30 +93,158 @@ def test_planner_refuses_unsupported_domains() -> None:
         plan_question("Tell me a joke.")
 
 
-def test_runtime_fails_closed_on_unknown_route_or_version(repo_root: Path) -> None:
-    with pytest.raises(RuntimeError, match="unknown research persona route"):
-        build_runtime(repo_root, persona_route="global-admin", expected_version=AGENT_VERSION)
+def test_runtime_fails_closed_on_wrong_version(repo_root: Path) -> None:
     with pytest.raises(RuntimeError, match="requires version"):
-        build_runtime(repo_root, persona_route="americas-supply-planner", expected_version="latest")
+        build_runtime(repo_root, expected_version="latest")
 
 
-def test_environment_requires_explicit_route_and_version(repo_root: Path, monkeypatch) -> None:
-    monkeypatch.delenv("CONTOSO_RESEARCH_PERSONA_ROUTE", raising=False)
+def test_environment_requires_explicit_version(repo_root: Path, monkeypatch) -> None:
     monkeypatch.delenv("CONTOSO_RESEARCH_VERSION", raising=False)
-    with pytest.raises(RuntimeError, match="are required"):
+    with pytest.raises(RuntimeError, match="is required"):
         runtime_from_environment(repo_root)
 
 
 def test_graph_refuses_contract_version_drift(runtime) -> None:
-    runtime.toolbox._contracts[0] = replace(runtime.toolbox._contracts[0], version="2.0.0")
+    runtime.contract_versions["catalog"] = "2.0.0"
     with pytest.raises(RuntimeError, match="do not match the agent route"):
-        build_research_graph(runtime.toolbox, deterministic_synthesizer)
+        build_research_graph(runtime, deterministic_synthesizer)
 
 
 def test_model_synthesizer_fails_on_empty_response() -> None:
-    synthesize = model_synthesizer(lambda _: "")
+    synthesize = model_synthesizer(lambda _prompt, **_kwargs: "")
     with pytest.raises(SynthesisError, match="empty synthesis"):
-        synthesize("question", [])
+        synthesize("question", [], "call-empty")
+
+
+def test_model_synthesizer_forwards_only_opaque_foundry_call_id() -> None:
+    captured: dict[str, object] = {}
+
+    def invoke(prompt: str, **kwargs):
+        captured["prompt"] = prompt
+        captured.update(kwargs)
+        return "grounded"
+
+    answer = model_synthesizer(invoke)("question", [], "opaque-call-value")
+
+    assert answer == "grounded"
+    assert captured["extra_headers"] == {FOUNDRY_CALL_ID: "opaque-call-value"}
+    assert "contoso-user" not in str(captured)
+
+
+@pytest.mark.parametrize(
+    ("user_id_key", "call_id", "message"),
+    [
+        (None, "call", "identity is required"),
+        ("", "call", "identity is required"),
+        ("contoso-user-americas-supply-planner", None, "call context is required"),
+        ("contoso-user-americas-supply-planner", "", "call context is required"),
+        ("forged-global-admin", "call", "not authorized"),
+    ],
+)
+def test_request_context_fails_closed(user_id_key, call_id, message) -> None:
+    with pytest.raises(HostedIdentityError, match=message):
+        resolve_trusted_request(
+            SimpleNamespace(user_id_key=user_id_key, call_id=call_id),
+            EVALUATION_USER_ROUTES,
+        )
+
+
+def test_user_route_allow_list_is_validated_and_immutable() -> None:
+    routes = load_trusted_user_routes(
+        '{"opaque-platform-user":"americas-support-lead"}'
+    )
+    assert routes["opaque-platform-user"] == "americas-support-lead"
+    with pytest.raises(TypeError):
+        routes["other"] = "americas-supply-planner"
+    with pytest.raises(HostedIdentityError, match="unknown persona"):
+        load_trusted_user_routes('{"opaque-platform-user":"global-admin"}')
+
+
+def test_host_ignores_forged_client_scope(monkeypatch) -> None:
+    from contoso_foundry.research.hosted import ResearchResponsesHostServer
+
+    async def forged_base_input(_self, _request, _context, *, skip_call_ids=None):
+        del skip_call_ids
+        return {
+            "messages": [],
+            "caller_route": "forged-global-admin",
+            "call_id": "forged-client-call",
+        }
+
+    monkeypatch.setattr(ResponsesHostServer, "build_input", forged_base_input)
+    server = object.__new__(ResearchResponsesHostServer)
+    server._trusted_user_routes = EVALUATION_USER_ROUTES
+    context = SimpleNamespace(
+        platform_context=SimpleNamespace(
+            user_id_key="contoso-user-americas-support-lead",
+            call_id="platform-call",
+        )
+    )
+
+    graph_input = asyncio.run(server.build_input(object(), context))
+
+    assert graph_input["caller_route"] == "americas-support-lead"
+    assert graph_input["call_id"] == "platform-call"
+
+
+def test_concurrent_requests_keep_identity_results_and_audit_disjoint(runtime) -> None:
+    graph = build_research_graph(runtime, deterministic_synthesizer)
+
+    def input_for(user_id_key: str, call_id: str) -> dict:
+        trusted = resolve_trusted_request(
+            SimpleNamespace(user_id_key=user_id_key, call_id=call_id),
+            EVALUATION_USER_ROUTES,
+        )
+        return {
+            "messages": [HumanMessage(content="Research customers visible to me.")],
+            "caller_route": trusted.caller_route,
+            "call_id": trusted.call_id,
+        }
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        americas_future = pool.submit(
+            graph.invoke,
+            input_for("contoso-user-americas-support-lead", "call-americas"),
+        )
+        emea_future = pool.submit(
+            graph.invoke,
+            input_for("contoso-user-emea-travel-coordinator", "call-emea"),
+        )
+        americas = americas_future.result()
+        emea = emea_future.result()
+
+    americas_ids = {row["customer_id"] for row in americas["evidence"][0]["result"]}
+    emea_ids = {row["customer_id"] for row in emea["evidence"][0]["result"]}
+    assert americas_ids
+    assert emea_ids
+    assert americas_ids.isdisjoint(emea_ids)
+    assert [item["persona"] for item in americas["audit"]] == [
+        "Americas Support Lead"
+    ]
+    assert [item["persona"] for item in emea["audit"]] == [
+        "EMEA Travel Coordinator"
+    ]
+
+
+def test_sequential_requests_do_not_accumulate_audit(runtime) -> None:
+    graph = build_research_graph(runtime, deterministic_synthesizer)
+    trusted = resolve_trusted_request(
+        SimpleNamespace(
+            user_id_key="contoso-user-americas-supply-planner",
+            call_id="call-first",
+        ),
+        EVALUATION_USER_ROUTES,
+    )
+    base = {
+        "messages": [HumanMessage(content="Research current stock availability.")],
+        "caller_route": trusted.caller_route,
+    }
+
+    first = graph.invoke({**base, "call_id": "call-first"})
+    second = graph.invoke({**base, "call_id": "call-second"})
+
+    assert len(first["audit"]) == 1
+    assert len(second["audit"]) == 1
 
 
 def test_golden_scenarios(repo_root: Path) -> None:
@@ -120,10 +276,106 @@ def test_hosted_configuration_routes_exact_versions(repo_root: Path) -> None:
     assert "version: '2026-03-17'" in unified
     assert "contoso-research" in unified
     assert "resourceGroup: rg-contoso-agents" in unified
+    assert "CONTOSO_RESEARCH_PERSONA_ROUTE" not in unified
+    assert "contoso_foundry.research.deployment" in unified
+    assert "continueOnError: false" in unified
     assert "FROM python:3.13.7-slim" in dockerfile
     assert "pip==26.2.1" in dockerfile
     assert 'CMD ["python", "-m", "contoso_foundry.research.hosted"]' in dockerfile
     assert {name: "1.0.0" for name in REQUIRED_CONTRACT_VERSIONS} == REQUIRED_CONTRACT_VERSIONS
+
+
+def test_deployment_target_is_derived_from_relative_boundary(repo_root: Path) -> None:
+    target = target_from_boundary(repo_root / "config" / "boundary.yaml")
+
+    assert target.resource_group == "rg-contoso-agents"
+    assert target.account_name == "contoso-agents-foundry"
+    assert target.project_name == "research"
+    assert target.endpoint.endswith("/api/projects/research")
+
+
+def test_deployment_rejects_endpoint_outside_declared_project(
+    repo_root: Path,
+    monkeypatch,
+) -> None:
+    def unexpected_azure_call(_args):
+        raise AssertionError("endpoint mismatch must fail before ARM access")
+
+    monkeypatch.setattr(azure_cli, "run", unexpected_azure_call)
+    with pytest.raises(DeploymentBoundaryError, match="does not match"):
+        verify_deployment_target(
+            repo_root,
+            configured_endpoint=(
+                "https://outside-boundary.services.ai.azure.com/api/projects/research"
+            ),
+        )
+
+
+def test_deployment_rejects_arm_resource_outside_owned_group(repo_root: Path) -> None:
+    target = target_from_boundary(repo_root / "config" / "boundary.yaml")
+    account = {
+        "resourceGroup": target.resource_group,
+        "type": "Microsoft.CognitiveServices/accounts",
+        "id": (
+            "/subscriptions/SUBSCRIPTION-ID/resourceGroups/"
+            f"{target.resource_group}/providers/Microsoft.CognitiveServices/accounts/"
+            f"{target.account_name}"
+        ),
+    }
+    project = {
+        "resourceGroup": "rg-outside-boundary",
+        "type": "Microsoft.CognitiveServices/accounts/projects",
+        "id": (
+            "/subscriptions/SUBSCRIPTION-ID/resourceGroups/rg-outside-boundary/"
+            "providers/Microsoft.CognitiveServices/accounts/outside/projects/research"
+        ),
+    }
+
+    with pytest.raises(DeploymentBoundaryError, match="outside the owned"):
+        verify_arm_target(target, account, project)
+
+
+def test_deployment_resolves_exact_resources_before_accepting_endpoint(
+    repo_root: Path,
+    monkeypatch,
+) -> None:
+    target = target_from_boundary(repo_root / "config" / "boundary.yaml")
+    account = {
+        "resourceGroup": target.resource_group,
+        "type": "Microsoft.CognitiveServices/accounts",
+        "id": (
+            "/subscriptions/SUBSCRIPTION-ID/resourceGroups/"
+            f"{target.resource_group}/providers/Microsoft.CognitiveServices/accounts/"
+            f"{target.account_name}"
+        ),
+    }
+    project = {
+        "resourceGroup": target.resource_group,
+        "type": "Microsoft.CognitiveServices/accounts/projects",
+        "id": (
+            "/subscriptions/SUBSCRIPTION-ID/resourceGroups/"
+            f"{target.resource_group}/providers/Microsoft.CognitiveServices/accounts/"
+            f"{target.account_name}/projects/{target.project_name}"
+        ),
+    }
+    calls: list[list[str]] = []
+
+    def arm_show(args):
+        calls.append(args)
+        return project if args[args.index("--resource-type") + 1] == "projects" else account
+
+    monkeypatch.setattr(azure_cli, "run", arm_show)
+
+    actual = verify_deployment_target(
+        repo_root,
+        configured_endpoint=target.endpoint,
+    )
+
+    assert actual == target
+    assert [call[call.index("--resource-group") + 1] for call in calls] == [
+        target.resource_group,
+        target.resource_group,
+    ]
 
 
 def test_hosted_runtime_uses_first_party_tracer_and_redacts_content(repo_root: Path) -> None:

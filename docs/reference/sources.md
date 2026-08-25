@@ -21,6 +21,7 @@ relying on one.
 | Hosted runtime contract | <https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agent-contract> |
 | Hosted-agent permissions | <https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agent-permissions> |
 | Private ACR deployment | <https://learn.microsoft.com/azure/foundry/agents/how-to/deploy-hosted-agent-private-azure-container-registry> |
+| Foundry SDKs and project endpoint shape | <https://learn.microsoft.com/azure/foundry/how-to/develop/sdk-overview> |
 | LangGraph tracing | <https://learn.microsoft.com/azure/foundry/how-to/develop/langchain-traces> |
 | Foundry Models pricing | <https://azure.microsoft.com/pricing/details/foundry-models/> |
 
@@ -145,6 +146,7 @@ the United States.
 | `az provider` | <https://learn.microsoft.com/cli/azure/provider> |
 | `az cognitiveservices model` | <https://learn.microsoft.com/cli/azure/cognitiveservices/model> |
 | `az cognitiveservices usage` | <https://learn.microsoft.com/cli/azure/cognitiveservices/usage> |
+| Azure Developer CLI hooks | <https://learn.microsoft.com/azure/developer/azure-developer-cli/azd-extensibility> |
 
 ## Tooling
 

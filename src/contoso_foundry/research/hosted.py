@@ -4,19 +4,59 @@ from __future__ import annotations
 
 import atexit
 import os
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
+from azure.ai.agentserver.responses import CreateResponse, ResponseContext
 from azure.ai.projects import AIProjectClient
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from langchain_azure_ai.agents.hosting import ResponsesHostServer
 from langchain_azure_ai.callbacks.tracers import AzureAIOpenTelemetryTracer
 from langchain_openai import ChatOpenAI
 
+from .request_context import resolve_trusted_request, trusted_user_routes_from_environment
 from .runtime import runtime_from_environment
 from .synthesis import model_synthesizer
 from .workflow import AGENT_NAME, HOSTED_VERSION, build_research_graph
 
 _AZURE_AI_SCOPE = "https://ai.azure.com/.default"
+
+
+class ResearchResponsesHostServer(ResponsesHostServer):
+    """Bind platform identity to graph state before any research node runs."""
+
+    def __init__(
+        self,
+        graph,
+        *,
+        trusted_user_routes: Mapping[str, str],
+        **kwargs,
+    ) -> None:
+        super().__init__(graph, **kwargs)
+        self._trusted_user_routes = trusted_user_routes
+
+    async def build_input(
+        self,
+        request: CreateResponse,
+        context: ResponseContext,
+        *,
+        skip_call_ids: frozenset[str] | None = None,
+    ) -> dict[str, Any]:
+        graph_input = await super().build_input(
+            request,
+            context,
+            skip_call_ids=skip_call_ids,
+        )
+        trusted = resolve_trusted_request(
+            context.platform_context,
+            self._trusted_user_routes,
+        )
+        return {
+            **graph_input,
+            "caller_route": trusted.caller_route,
+            "call_id": trusted.call_id,
+        }
 
 
 def _required_environment(name: str) -> str:
@@ -77,10 +117,13 @@ def main() -> None:
         trace_all_langgraph_nodes=True,
         enable_content_recording=False,
     )
-    graph = build_research_graph(runtime.toolbox, model_synthesizer(model.invoke)).with_config(
+    graph = build_research_graph(runtime, model_synthesizer(model.invoke)).with_config(
         {"callbacks": [tracer], "run_name": AGENT_NAME}
     )
-    ResponsesHostServer(graph).run(port=int(os.environ.get("PORT", "8088")))
+    ResearchResponsesHostServer(
+        graph,
+        trusted_user_routes=trusted_user_routes_from_environment(),
+    ).run(port=int(os.environ.get("PORT", "8088")))
 
 
 if __name__ == "__main__":

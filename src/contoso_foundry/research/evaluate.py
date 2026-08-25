@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import yaml
 from langchain_core.messages import HumanMessage
 
+from .request_context import EVALUATION_USER_ROUTES, resolve_trusted_request
 from .runtime import build_runtime
 from .synthesis import deterministic_synthesizer
 from .workflow import AGENT_NAME, AGENT_VERSION, HOSTED_VERSION, PROTOCOL_VERSION, build_research_graph
@@ -33,14 +35,32 @@ def run_evaluations(repo_root: Path, scenarios_path: Path) -> list[str]:
             f"evaluation routes {actual_route!r}; expected {expected_route!r}"
         )
 
-    route = str(document.get("persona_route", ""))
-    runtime = build_runtime(repo_root, persona_route=route, expected_version=AGENT_VERSION)
-    graph = build_research_graph(runtime.toolbox, deterministic_synthesizer)
+    platform_user_id = str(document.get("platform_user_id", ""))
+    configured_route = str(document.get("persona_route", ""))
+    runtime = build_runtime(repo_root, expected_version=AGENT_VERSION)
+    graph = build_research_graph(runtime, deterministic_synthesizer)
     results: list[str] = []
     try:
         for scenario in document.get("scenarios", []):
+            scenario_id = str(scenario["id"])
+            trusted = resolve_trusted_request(
+                SimpleNamespace(
+                    user_id_key=platform_user_id,
+                    call_id=f"evaluation-{scenario_id}",
+                ),
+                EVALUATION_USER_ROUTES,
+            )
+            if trusted.caller_route != configured_route:
+                raise EvaluationError(
+                    f"{scenario_id}: platform identity mapped to {trusted.caller_route!r}, "
+                    f"not configured route {configured_route!r}"
+                )
             output: dict[str, Any] = graph.invoke(
-                {"messages": [HumanMessage(content=str(scenario["question"]))]}
+                {
+                    "messages": [HumanMessage(content=str(scenario["question"]))],
+                    "caller_route": trusted.caller_route,
+                    "call_id": trusted.call_id,
+                }
             )
             actual_tools = [step["tool"] for step in output["plan"]]
             expected_tools = list(scenario["expected_tools"])

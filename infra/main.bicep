@@ -217,6 +217,8 @@ resource monthlyBudget 'Microsoft.Consumption/budgets@2024-08-01' = {
 
 output foundryAccountName string = foundryAccount.name
 output projectNames array = projectNames
+output researchProjectEndpoint string = 'https://${foundryAccount.name}.services.ai.azure.com/api/projects/research'
+output researchProjectResourceId string = '${foundryAccount.id}/projects/research'
 output logAnalyticsWorkspaceName string = monitoring.outputs.logAnalyticsWorkspaceName
 output applicationInsightsName string = applicationInsights.name
 output applicationInsightsResourceId string = applicationInsights.id

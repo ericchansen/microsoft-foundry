@@ -27,14 +27,29 @@ The compiled graph keeps these fields visible after every node:
 - `question` — normalized user question;
 - `plan` — exact Toolbox calls and arguments;
 - `evidence` — synthetic records returned by those calls;
-- `audit` — tool, persona, argument names, and result counts;
+- `audit` — this invocation's tool, persona, argument names, and result counts;
 - `answer` and `messages` — the evidence-bound synthesis result.
 
 Planning is deterministic and bounded to customer, order, invoice, product, and
-stock questions. Retrieval uses the shared Toolbox with one trusted persona
-route, currently `americas-supply-planner`. The model cannot change that route,
-call SQLite directly, or invent a new capability. Synthesis receives only the
-question and retrieved evidence; an empty model response is an error.
+stock questions. Before the graph runs, the Responses host requires the
+platform-injected user partition key and opaque call ID, maps the user key through
+an immutable server allow-list to a canonical synthetic principal, and rejects
+missing or unknown values. Prompt content and pass-through client headers cannot
+select a persona, region, role, `oid`, or `tid`.
+
+Retrieval opens a new read-only SQLite connection and constructs a new scoped
+Toolbox for every invocation. Its audit list is therefore request-local even when
+requests run concurrently. The graph retains the server-resolved route and opaque
+call ID as internal state, but does not copy either into the answer or audit. The
+model cannot call SQLite directly or invent a new capability. Synthesis receives
+only the question and retrieved evidence; an empty model response is an error.
+The opaque call ID is forwarded on the downstream first-party Foundry model call,
+while the user partition key is never forwarded as downstream identity.
+
+The production allow-list is JSON supplied through the deployment environment
+and frozen at server startup. It maps opaque hosted user partition keys to only
+the three canonical fixture routes. The repository's deterministic evaluator has
+a separate synthetic mapping; production never falls back to it.
 
 ## Exact contracts and routing
 
@@ -64,9 +79,13 @@ health, and cancellation handling; this agent does not implement a legacy
 
 The unified `azure.yaml` connects to the existing Research project and confines
 deployment to `rg-contoso-agents`. It declares the exact model deployment,
-container resources, endpoint authorization, and version route. The Foundry
-platform creates a dedicated agent identity. Any future downstream role must be
-assigned only after that identity exists, following the
+container resources, endpoint authorization, and version route. Its fail-closed
+`predeploy` hook derives the exact account and project names from the relative
+ownership declaration, resolves both resources through ARM, and rejects an
+endpoint or resource that does not match the declared resource group.
+
+The Foundry platform creates a dedicated agent identity. Any future downstream
+role must be assigned only after that identity exists, following the
 [hosted-agent permissions reference](https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agent-permissions),
 and never above the project-owned resource group.
 
@@ -94,11 +113,13 @@ monitoring design.
 2. outstanding receivables;
 3. stock availability.
 
-The evaluator checks the agent, hosted route, protocol, persona, plan, row
-counts, and answer conditions. Unknown routes, wrong versions, data-lock drift,
-contract drift, unsupported questions, tool failures, and empty synthesis all
-fail closed. Tests mock model synthesis and need neither Azure credentials nor
-network access.
+The evaluator checks the agent, hosted route, protocol, platform-user mapping,
+persona, plan, row counts, and answer conditions. Unknown identities, missing
+call context, wrong versions, data-lock drift, contract drift, unsupported
+questions, tool failures, and empty synthesis all fail closed. Tests also run
+concurrent personas and prove their rows and audit records stay disjoint. Model
+synthesis is mocked, so the suite needs neither Azure credentials nor network
+access.
 
 Run the local gates from the branch-local environment:
 
@@ -115,12 +136,28 @@ The deployment uses the current unified configuration rather than legacy split
 agent manifests:
 
 ```powershell
-azd env set CONTOSO_RESEARCH_PROJECT_ENDPOINT <research-project-endpoint>
+$env:PYTHONPATH = "src"
+$routes = Get-Content .\internal\research-user-routes.json -Raw
+azd env set CONTOSO_RESEARCH_USER_ROUTE_ALLOWLIST $routes
+$endpoint = .\.venv\Scripts\python -m contoso_foundry.research.deployment --resolve
+azd env set CONTOSO_RESEARCH_PROJECT_ENDPOINT $endpoint
 azd deploy contoso-research
 azd ai agent show contoso-research
 ```
 
-The endpoint value is an environment input and must not be committed. After
-deployment, smoke tests must call the protocol-specific Responses endpoint for
-hosted version `1` and use only synthetic prompts from the golden suite. Any
+The resolver reads only the exact account and nested project named by
+`config/boundary.yaml`, verifies both live ARM identities are in
+`rg-contoso-agents`, and returns the documented
+[project endpoint](https://learn.microsoft.com/azure/foundry/how-to/develop/sdk-overview)
+shape. The endpoint value remains an environment input and must not be committed.
+The `predeploy` hook repeats the ARM and endpoint checks, so bypassing the
+resolver still fails closed.
+
+`internal/research-user-routes.json` is a local, gitignored deployment input whose
+keys are the platform-provided opaque user partition values and whose values are
+canonical route names. A missing, malformed, empty, or unknown mapping prevents
+the hosted server from starting.
+
+After deployment, smoke tests must call the protocol-specific Responses endpoint
+for hosted version `1` and use only synthetic prompts from the golden suite. Any
 provisioning, API, evaluation, or smoke failure blocks promotion.
