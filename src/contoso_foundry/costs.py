@@ -34,6 +34,10 @@ DEFAULT_BUDGET_USD = 500.0
 #: Statuses worth retrying: the API is unauthenticated and aggressively throttled.
 RETRYABLE_STATUS = frozenset({408, 429, 500, 502, 503, 504})
 
+#: Recognised values for a line item's `billing` field. Anything else is a typo,
+#: and a typo must not be able to move an Azure meter out of the Azure ceiling.
+VALID_BILLING = frozenset({"azure", "external"})
+
 _UNIT_RE = re.compile(r"^\s*([0-9]*\.?[0-9]+)\s*([KM])?\b")
 
 
@@ -84,8 +88,11 @@ class PriceTier:
 class PriceClient:
     """Queries the unauthenticated retail price catalogue, with an on-disk cache.
 
-    The cache exists so a developer can iterate offline and so CI can pin a run
-    to a known snapshot when investigating a failure. CI's default path is live.
+    The cache is a *replay* mechanism, not an accelerator. It is read only in
+    `--offline` mode, so a live run always reflects today's catalogue: a budget
+    gate that silently reports month-old prices as current is worse than one
+    that fails loudly when the API is unreachable. Live runs still write the
+    cache, so `--offline` can replay the last good snapshot deliberately.
     """
 
     def __init__(
@@ -108,8 +115,9 @@ class PriceClient:
         self.request_timeout = request_timeout
         self.deadline_seconds = deadline_seconds
         self._session = session or requests.Session()
+        #: Doubles as an in-run memo so one filter is fetched at most once.
         self._cache: dict[str, list[dict[str, Any]]] = {}
-        if cache_path and cache_path.exists():
+        if offline and cache_path and cache_path.exists():
             self._cache = json.loads(cache_path.read_text(encoding="utf-8"))
 
     def query(self, odata_filter: str) -> list[dict[str, Any]]:
@@ -376,6 +384,14 @@ def evaluate(
         item_region = raw.get("region", region)
         quantity = float(raw["quantity"])
         billing = raw.get("billing", "azure")
+        if billing not in VALID_BILLING:
+            # A typo such as `azuer` used to fall through to the external branch,
+            # quietly moving a billable Azure meter outside the ceiling it is
+            # supposed to be tested against.
+            raise CostModelError(
+                f"line item {raw['id']!r}: billing must be one of "
+                f"{sorted(VALID_BILLING)}, got {billing!r}"
+            )
 
         if billing != "azure":
             # Priced from a published list price recorded in the YAML, because it

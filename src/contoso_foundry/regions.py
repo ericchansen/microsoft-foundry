@@ -360,6 +360,16 @@ def rank(regions: list[Region], config: dict[str, Any], client: costs.PriceClien
         else:
             r.record("cost-basket", True, f"${total:,.2f}/month for the comparison basket", evidence)
 
+    if survivors and all(r.monthly_basket_usd is None for r in survivors):
+        # Cost is the primary ranking key. If nothing could be priced, the order
+        # that comes out is decided entirely by quota and distance -- so the run
+        # would commit to a region without the evidence it claims to rank on.
+        raise ProbeFailedError(
+            "no qualifying region could be priced, so the ranking has no cost signal. "
+            "This is a pricing-API failure, not a result: re-run when the Retail "
+            "Prices API is reachable rather than trusting this ordering."
+        )
+
     return sorted(
         survivors,
         key=lambda r: (

@@ -55,6 +55,43 @@ line_items:
       sits inside the zero band, so this line is expected to be $0 — the tier is
       still priced live rather than assumed.
 
+  - id: foundry-gpt5-input
+    component: Foundry gpt-5 inference — input tokens (Global Standard)
+    billing: azure
+    quantity: 20000000
+    unit: tokens
+    expect_unit_of_measure: 1M
+    meter:
+      serviceName: Foundry Models
+      skuName: GPT 5 Inpt Glbl
+      meterName: GPT 5 Inpt Glbl 1M Tokens
+    source: https://learn.microsoft.com/azure/ai-foundry/openai/how-to/deployment-types
+    notes: >-
+      The model deployment that the Foundry Agent Service agents call. This is a
+      SEPARATE charge from the Logic Apps agent-loop token meters below: those
+      price the orchestration runtime, this prices the inference the deployment
+      actually serves. 20 million input tokens/month is roughly 6,000 interactive
+      concierge turns at a 3K-token working context, matching the sizing
+      convention used for the agent-loop lines. Global Standard is the deployment
+      type the region gate requires. Cached-input and Batch discounts are
+      deliberately NOT assumed, so this line is an upper bound.
+
+  - id: foundry-gpt5-output
+    component: Foundry gpt-5 inference — output tokens (Global Standard)
+    billing: azure
+    quantity: 2500000
+    unit: tokens
+    expect_unit_of_measure: 1M
+    meter:
+      serviceName: Foundry Models
+      skuName: GPT 5 outpt Glbl
+      meterName: GPT 5 outpt Glbl 1M Tokens
+    source: https://learn.microsoft.com/azure/ai-foundry/openai/how-to/deployment-types
+    notes: >-
+      2.5 million output tokens/month. Output is 8x the input unit price, so this
+      is the line most sensitive to agents that answer at length; it is the first
+      number to revisit if the estimate drifts.
+
   - id: aca-vcpu
     component: Container Apps vCPU (active)
     billing: azure

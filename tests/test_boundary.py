@@ -45,7 +45,63 @@ class TestHappyPath:
     def test_every_check_is_recorded_even_when_it_passes(self):
         """A silent pass is indistinguishable from a check that never ran."""
         report = boundary.check_plan(plan(), expected_resource_group=RG)
-        assert len(report.checks_run) == 5
+        assert report.checks_run == [
+            "plan:resource-group-name",
+            "plan:relative-scopes",
+            "plan:no-reuse",
+            "plan:role-assignment-scopes",
+            "plan:diagnostic-targets",
+            "plan:teardown-completeness",
+        ]
+
+
+class TestDiagnosticTargets:
+    """Where telemetry *lands* decides whether it leaves the boundary."""
+
+    def test_rejects_a_workspace_this_plan_does_not_create(self):
+        report = boundary.check_plan(
+            plan(
+                diagnostic_settings=[
+                    {
+                        "name": "apim-diagnostics",
+                        "target_workspace": "shared-corp-logs",
+                        "scope": "providers/Microsoft.ApiManagement",
+                    }
+                ]
+            ),
+            expected_resource_group=RG,
+        )
+        assert "plan:diagnostic-targets" in failed_checks(report)
+
+    def test_rejects_a_setting_with_no_declared_target(self):
+        report = boundary.check_plan(
+            plan(
+                diagnostic_settings=[
+                    {"name": "apim-diagnostics", "scope": "providers/Microsoft.ApiManagement"}
+                ]
+            ),
+            expected_resource_group=RG,
+        )
+        assert "plan:diagnostic-targets" in failed_checks(report)
+
+    def test_accepts_a_workspace_declared_in_the_same_plan(self):
+        report = boundary.check_plan(
+            plan(
+                resources=[
+                    {"name": "foundry", "kind": "ai-foundry", "scope": "providers/Microsoft.CognitiveServices"},
+                    {"name": "logs", "kind": "workspace", "scope": "providers/Microsoft.OperationalInsights"},
+                ],
+                diagnostic_settings=[
+                    {
+                        "name": "apim-diagnostics",
+                        "target_workspace": "logs",
+                        "scope": "providers/Microsoft.ApiManagement",
+                    }
+                ],
+            ),
+            expected_resource_group=RG,
+        )
+        assert report.ok, report.violations
 
 
 class TestResourceGroupName:

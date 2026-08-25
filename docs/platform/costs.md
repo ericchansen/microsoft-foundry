@@ -43,6 +43,12 @@ changing the answer by a factor of a thousand.
 **An unpriceable component reserves budget.** A billable component with no
 published meter must declare a reserve. Recording it as zero is banned.
 
+**Inference is priced separately from orchestration.** Logic Apps agent-loop
+token meters bill the *orchestration runtime*; the Foundry model deployment bills
+the *inference it serves*. They are different meters on different services, and
+an estimate that lists only one of them understates the bill. Both appear as
+explicit line items, and neither assumes cached-input or Batch discounts.
+
 ## Components with no published price
 
 [Azure SRE Agent](https://learn.microsoft.com/azure/sre-agent/pricing-billing)

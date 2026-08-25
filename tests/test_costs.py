@@ -8,6 +8,7 @@ component with no meter being recorded as free.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import pytest
@@ -325,3 +326,86 @@ class TestRetryExhaustion:
             client.query("serviceName eq 'API Management'")
 
         assert session.calls == 0
+
+
+class _CountingSession:
+    """Records how many live calls escape the cache."""
+
+    def __init__(self, items):
+        self.items = items
+        self.calls = 0
+
+    def get(self, url, params=None, timeout=None):
+        self.calls += 1
+        return _Response(200, {"Items": self.items, "NextPageLink": None})
+
+
+class _Response:
+    def __init__(self, status_code, payload):
+        self.status_code = status_code
+        self._payload = payload
+        self.headers: dict[str, str] = {}
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return self._payload
+
+
+class TestCacheIsOfflineOnly:
+    """A cached price presented as a live price is a silent staleness bug."""
+
+    def _cache(self, tmp_path):
+        path = tmp_path / "price-cache.json"
+        path.write_text(
+            json.dumps(
+                {"USD|serviceName eq 'API Management'": [price_item(retailPrice=999.0)]}
+            ),
+            encoding="utf-8",
+        )
+        return path
+
+    def test_a_live_run_ignores_the_cache_on_disk(self, tmp_path):
+        session = _CountingSession([price_item(retailPrice=1.0)])
+        client = costs.PriceClient(
+            session=session, cache_path=self._cache(tmp_path), offline=False
+        )
+
+        items = client.query("serviceName eq 'API Management'")
+
+        assert session.calls == 1, "a live run must query the API, not replay the cache"
+        assert items[0]["retailPrice"] == 1.0
+
+    def test_an_offline_run_uses_the_cache(self, tmp_path):
+        session = _CountingSession([])
+        client = costs.PriceClient(
+            session=session, cache_path=self._cache(tmp_path), offline=True
+        )
+
+        items = client.query("serviceName eq 'API Management'")
+
+        assert session.calls == 0
+        assert items[0]["retailPrice"] == 999.0
+
+
+class TestBillingValidation:
+    """An unrecognised billing tag must not route spend around the ceiling."""
+
+    def test_a_typo_is_rejected_rather_than_treated_as_external(self):
+        estimate = {
+            "monthly_budget_usd": 500,
+            "line_items": [
+                {
+                    "id": "apim",
+                    "component": "API Management",
+                    "billing": "azuer",
+                    "quantity": 730,
+                    "unit": "hours",
+                    "meter": {"serviceName": "API Management", "meterName": "Basic v2 Unit"},
+                }
+            ],
+        }
+
+        with pytest.raises(costs.CostModelError, match="billing"):
+            costs.evaluate(estimate, region="r", client=FakeClient([price_item()]), budget_usd=500)

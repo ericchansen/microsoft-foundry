@@ -54,7 +54,7 @@ class Discovery:
 
     collected_at: str
     account: dict[str, Any] = field(default_factory=dict)
-    resource_groups: list[dict[str, Any]] = field(default_factory=list)
+    resource_groups: list[dict[str, Any]] | None = field(default_factory=list)
     providers: dict[str, str] = field(default_factory=dict)
     licences: list[dict[str, Any]] = field(default_factory=list)
     target_resource_group: dict[str, Any] = field(default_factory=dict)
@@ -82,16 +82,34 @@ def collect(target_resource_group: str) -> Discovery:
         result.errors.append(f"account: {exc}")
         return result
 
-    groups = azure_cli.try_run(["group", "list"], default=[]) or []
-    result.resource_groups = [
-        {"name": g.get("name"), "location": g.get("location")} for g in groups
-    ]
+    try:
+        groups = azure_cli.run(["group", "list"]) or []
+    except azure_cli.AzureCliError as exc:
+        # A failed probe is not an empty subscription. Reporting "zero resource
+        # groups" here would let the public report assert that the target group
+        # is absent and the boundary is clean, on no evidence at all.
+        result.errors.append(f"group list: {exc}")
+        result.resource_groups = None
+    else:
+        result.resource_groups = [
+            {"name": g.get("name"), "location": g.get("location")} for g in groups
+        ]
 
     provider_rows = azure_cli.try_run(["provider", "list"], default=[]) or []
     by_namespace = {p.get("namespace", ""): p.get("registrationState", "") for p in provider_rows}
     result.providers = {ns: by_namespace.get(ns, "Unknown") for ns in REQUIRED_PROVIDERS}
 
     result.licences = _collect_licences(result)
+
+    if result.resource_groups is None:
+        # Unknown, explicitly. Downstream renderers must not read this as "absent".
+        result.target_resource_group = {
+            "name": target_resource_group,
+            "exists": None,
+            "location": None,
+            "note": "could not be determined: 'az group list' failed",
+        }
+        return result
 
     existing = next((g for g in result.resource_groups if g["name"] == target_resource_group), None)
     result.target_resource_group = {
@@ -159,10 +177,12 @@ def render_internal_markdown(d: Discovery) -> str:
         "| --- | --- | --- |",
     ]
     target = d.target_resource_group.get("name")
-    for g in d.resource_groups:
+    for g in d.resource_groups or []:
         status = "TARGET" if g["name"] == target else "PROTECTED — read-only"
         lines.append(f"| `{g['name']}` | `{g['location']}` | {status} |")
-    if not d.resource_groups:
+    if d.resource_groups is None:
+        lines.append("| _not readable — `az group list` failed_ | | |")
+    elif not d.resource_groups:
         lines.append("| _none_ | | |")
 
     lines += ["", "## Resource provider registration", "", "| Namespace | State |", "| --- | --- |"]
@@ -189,6 +209,27 @@ def render_public_markdown(d: Discovery) -> str:
     target = d.target_resource_group
     interesting = [r for r in d.licences if r["ofInterest"]]
 
+    if d.resource_groups is None:
+        boundary_lines = [
+            "- **The resource-group inventory could not be read** (`az group list` failed), "
+            "so this run makes no claim about what the subscription contains.",
+            f"- Target resource group `{target.get('name')}`: **unknown**. "
+            "The boundary cannot be declared clean without a successful read.",
+        ]
+    else:
+        outside = len(d.resource_groups) - (1 if target.get("exists") else 0)
+        boundary_lines = [
+            f"- The subscription contains **{len(d.resource_groups)} resource group(s)**, "
+            f"of which **{outside}** are outside the "
+            "ownership boundary and are therefore read-only for this project.",
+            f"- Target resource group `{target.get('name')}`: "
+            + (
+                "**already exists**"
+                if target.get("exists")
+                else "**does not exist yet** — the boundary is clean."
+            ),
+        ]
+
     lines = [
         "# Environment verification (sanitized)",
         "",
@@ -200,11 +241,7 @@ def render_public_markdown(d: Discovery) -> str:
         "## Conclusions",
         "",
         f"- Azure CLI is signed in and targeting a single subscription in state `{acct.get('state', 'unknown')}`.",
-        f"- The subscription contains **{len(d.resource_groups)} resource group(s)**, "
-        f"of which **{len(d.resource_groups) - (1 if target.get('exists') else 0)}** are outside the "
-        "ownership boundary and are therefore read-only for this project.",
-        f"- Target resource group `{target.get('name')}`: "
-        + ("**already exists**" if target.get("exists") else "**does not exist yet** — the boundary is clean."),
+        *boundary_lines,
         "",
         "## Resource provider readiness",
         "",

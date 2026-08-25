@@ -152,6 +152,26 @@ def check_plan(plan: dict[str, Any], *, expected_resource_group: str | None = No
         if not entry.get("role"):
             report.fail("plan:role-assignment-scopes", name, "no 'role' declared")
 
+    report.checks_run.append("plan:diagnostic-targets")
+    declared_resources = {
+        str(e.get("name")) for e in plan.get("resources", []) or [] if e.get("name")
+    }
+    for entry in plan.get("diagnostic_settings", []) or []:
+        name = str(entry.get("name", "<unnamed>"))
+        workspace = str(entry.get("target_workspace", ""))
+        if not workspace:
+            report.fail("plan:diagnostic-targets", name, "no 'target_workspace' declared")
+        elif workspace not in declared_resources:
+            # The setting's own scope being relative only proves *what* is emitting
+            # telemetry. The destination is what decides whether the data leaves
+            # the boundary, so it must name a resource this plan creates.
+            report.fail(
+                "plan:diagnostic-targets",
+                name,
+                f"target_workspace {workspace!r} is not a resource declared in this plan, "
+                "so telemetry could be routed to a shared or pre-existing workspace",
+            )
+
     report.checks_run.append("plan:teardown-completeness")
     creatable = {
         str(e.get("name"))

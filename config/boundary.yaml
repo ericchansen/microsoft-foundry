@@ -42,6 +42,15 @@ resources:
   - name: container-apps-env
     kind: Microsoft.App/managedEnvironments
     scope: providers/Microsoft.App/managedEnvironments/contoso-agents-env
+  - name: agent-container-app
+    kind: Microsoft.App/containerApps
+    scope: providers/Microsoft.App/containerApps/contoso-agent-runtime
+  - name: agent-workflow
+    kind: Microsoft.Logic/workflows
+    scope: providers/Microsoft.Logic/workflows/contoso-agent-loop
+  - name: sre-agent
+    kind: Microsoft.App/sreAgents
+    scope: providers/Microsoft.App/sreAgents/contoso-sre-agent
   - name: log-analytics
     kind: Microsoft.OperationalInsights/workspaces
     scope: providers/Microsoft.OperationalInsights/workspaces/contoso-agents-logs
