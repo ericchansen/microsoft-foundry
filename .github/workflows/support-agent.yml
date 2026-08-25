@@ -1,0 +1,136 @@
+name: Contoso Support hosted agent
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_resource_group:
+        description: Type rg-contoso-agents to authorize provisioning and deployment
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: contoso-support-hosted-agent
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Private build, deploy, route, and smoke
+    runs-on: [self-hosted, linux, contoso-agents-vnet]
+    timeout-minutes: 60
+    environment: contoso-agents
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AZURE_RESOURCE_GROUP: rg-contoso-agents
+      AZURE_LOCATION: northcentralus
+      BUDGET_CONTACT_EMAIL: ${{ vars.BUDGET_CONTACT_EMAIL }}
+      CONTOSO_PRINCIPAL_MAP_JSON: ${{ secrets.CONTOSO_PRINCIPAL_MAP_JSON }}
+      CONFIRM_RESOURCE_GROUP: ${{ inputs.confirm_resource_group }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - uses: Azure/setup-azd@v2
+
+      - name: Install project
+        run: pip install -e ".[dev]"
+
+      - name: Require the owned boundary and deployment inputs
+        run: |
+          test "$CONFIRM_RESOURCE_GROUP" = "$AZURE_RESOURCE_GROUP"
+          test -n "$BUDGET_CONTACT_EMAIL"
+          test -n "$CONTOSO_PRINCIPAL_MAP_JSON"
+          foundry boundary --no-live
+
+      - name: Azure login with workload identity federation
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Authenticate azd and configure the private deployment
+        env:
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          azd auth login \
+            --client-id "$AZURE_CLIENT_ID" \
+            --tenant-id "$AZURE_TENANT_ID" \
+            --federated-credential-provider github
+          azd env new support-agent-ci --no-prompt
+          azd env set AZURE_SUBSCRIPTION_ID "$AZURE_SUBSCRIPTION_ID"
+          azd env set AZURE_RESOURCE_GROUP "$AZURE_RESOURCE_GROUP"
+          azd env set AZURE_LOCATION "$AZURE_LOCATION"
+          azd env set CONTOSO_PRINCIPAL_MAP_JSON "$CONTOSO_PRINCIPAL_MAP_JSON"
+
+      - name: Verify live boundary before every mutation
+        run: foundry boundary
+
+      - name: Provision only inside rg-contoso-agents
+        run: azd provision --no-prompt
+
+      - name: Deploy Responses 2.0 agent from private ACR
+        run: azd deploy --no-prompt
+
+      - name: Verify exact active version and exclusive route
+        run: |
+          project_endpoint="$(azd env get-value AZURE_AI_PROJECT_ENDPOINT)"
+          agent_version="$(azd env get-value AGENT_CONTOSO_SUPPORT_VERSION)"
+          foundry support verify-deployment \
+            --project-endpoint "$project_endpoint" \
+            --version "$agent_version"
+
+      - name: Run authenticated synthetic Responses smoke
+        run: |
+          responses_endpoint="$(azd env get-value AGENT_CONTOSO_SUPPORT_RESPONSES_ENDPOINT)"
+          token="$(az account get-access-token --resource https://ai.azure.com --query accessToken --output tsv)"
+
+          jq -n --arg input \
+            "Look up synthetic CASE-00005. Return its case ID and only evidence visible to this caller." \
+            '{input: $input, stream: false}' >visible-request.json
+          curl --fail-with-body --silent --show-error \
+            --oauth2-bearer "$token" \
+            --header "Content-Type: application/json" \
+            --data @visible-request.json \
+            "$responses_endpoint" >visible-response.json
+          jq -e '.status == "completed"' visible-response.json >/dev/null
+          jq -r '.. | .text? // empty' visible-response.json | grep -F "CASE-00005"
+
+          jq -n --arg input \
+            "Look up synthetic CASE-00003. If no row is visible, return exactly UNAVAILABLE." \
+            '{input: $input, stream: false}' >hidden-request.json
+          curl --fail-with-body --silent --show-error \
+            --oauth2-bearer "$token" \
+            --header "Content-Type: application/json" \
+            --data @hidden-request.json \
+            "$responses_endpoint" >hidden-response.json
+          jq -e '.status == "completed"' hidden-response.json >/dev/null
+          jq -r '.. | .text? // empty' hidden-response.json | grep -Fx "UNAVAILABLE"
+
+      - name: Verify distinct GenAI telemetry arrived
+        run: |
+          for attempt in {1..20}; do
+            span_count="$(az monitor app-insights query \
+              --app contoso-agents-insights \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --analytics-query "union isfuzzy=true traces, dependencies | where timestamp > ago(30m) | where cloud_RoleName == 'contoso-support' | where name has 'agent' or tostring(customDimensions) has 'gen_ai' | count" \
+              --query 'tables[0].rows[0][0]' \
+              --output tsv)"
+            if test "${span_count:-0}" -gt 0; then
+              echo "Observed $span_count contoso-support GenAI span(s)."
+              exit 0
+            fi
+            sleep 30
+          done
+          echo "No contoso-support GenAI spans arrived within 10 minutes." >&2
+          exit 1

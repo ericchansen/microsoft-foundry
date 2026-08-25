@@ -28,6 +28,10 @@ az account set --subscription "<your subscription>"
 | `foundry costs` | no | Prices the estimate live and enforces the budget ceiling. |
 | `foundry boundary` | optional | Validates the ownership boundary. `--no-live` skips the Azure checks. |
 | `foundry scan <path>` | no | Fails if publishable content contains an identifier or secret. |
+| `foundry data verify` | no | Rebuilds the canonical synthetic data and checks integrity, privacy and provenance. |
+| `foundry toolbox validate` | no | Validates server-scoped tool contracts. |
+| `foundry support evaluate` | no | Runs deterministic Contoso Support row-level security scenarios. |
+| `foundry support verify-deployment` | yes | Verifies the exact active hosted-agent version and exclusive route. |
 
 `foundry costs` and `foundry scan` need no Azure credentials, so anyone can
 verify the budget gate and the publishing gate.
@@ -77,6 +81,19 @@ Every push runs:
 4. `foundry costs` — live pricing against the real API, hard-failing over budget.
 5. `mkdocs build --strict` — a broken internal link fails the build.
 6. `foundry scan site` — the publishing gate above.
+
+The dedicated Contoso Support job also installs the pinned public-preview
+hosting packages, builds the `linux/amd64` image, runs the deterministic scoped
+evaluation and polls the protocol library's `/readiness` endpoint.
+
+## Contoso Support live evidence
+
+The protected `Contoso Support hosted agent` workflow is the live gate. It must
+run on the private-network self-hosted runner, verify the exact active version
+and 100 percent route, exercise authenticated `/responses` scenarios, and
+observe `contoso-support` GenAI spans in shared Application Insights. A missing
+runner, capacity failure, evaluation error or absent telemetry is a blocker, not
+a skipped success.
 
 The cost gate runs against live prices deliberately. If Microsoft raises a price
 enough to push the platform over budget, the build should break — that is the

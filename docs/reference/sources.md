@@ -1,7 +1,7 @@
 # Sources
 
 Every product, behaviour and pricing claim on this site traces to a first-party
-Microsoft page. All links were verified on **2026-08-24**.
+Microsoft page. All links were verified on **2026-08-25**.
 
 Where a capability is in **public preview** it is labelled as such wherever it
 appears. Preview features can change without notice; re-check the source before
@@ -15,6 +15,15 @@ relying on one.
 | Agent Service overview | <https://learn.microsoft.com/azure/foundry/agents/overview> |
 | Agent Service limits, quotas and regions | <https://learn.microsoft.com/azure/foundry/agents/concepts/limits-quotas-regions> |
 | Model quotas and limits | <https://learn.microsoft.com/azure/foundry/openai/quotas-limits> |
+| Agent Framework hosted agents | <https://learn.microsoft.com/azure/foundry/how-to/develop/framework-hosted-agents> |
+| Unified `azure.yaml` reference | <https://learn.microsoft.com/azure/foundry/agents/concepts/azure-yaml-reference> |
+| Hosted-agent deployment and protocol contract | <https://learn.microsoft.com/azure/foundry/agents/how-to/deploy-hosted-agent> |
+| Hosted-agent versions, routing and monitoring | <https://learn.microsoft.com/azure/foundry/agents/how-to/manage-hosted-agent> |
+| Hosted-agent permissions | <https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agent-permissions> |
+| Private Azure Container Registry deployment | <https://learn.microsoft.com/azure/foundry/agents/how-to/deploy-hosted-agent-private-azure-container-registry> |
+| Hosted-agent virtual networking | <https://learn.microsoft.com/azure/foundry/agents/how-to/virtual-networks> |
+| Agent Framework agent observability | <https://learn.microsoft.com/agent-framework/agents/observability> |
+| Agent Framework workflow observability | <https://learn.microsoft.com/agent-framework/workflows/observability> |
 
 Model quota is **subscription-level**, and Global Standard deployments draw from
 a single pool shared across regions. A region can therefore pass a model

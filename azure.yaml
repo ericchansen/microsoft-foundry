@@ -1,11 +1,18 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
 name: contoso-support
 
+requiredVersions:
+  azd: ">=1.27.1"
+  extensions:
+    azure.ai.agents: ">=1.0.0-beta.8"
+    azure.ai.projects: ">=1.0.0-beta.4"
+
 services:
   ai-project:
     host: azure.ai.project
+    endpoint: ${AZURE_AI_PROJECT_ENDPOINT}
     deployments:
-      - name: gpt-5.4-mini
+      - name: support-gpt-5-4-mini
         model:
           format: OpenAI
           name: gpt-5.4-mini
@@ -22,12 +29,17 @@ services:
     target: contoso-support-principal-map
     authType: CustomKeys
     credentials:
-      principal_map: ${CONTOSO_SUPPORT_PRINCIPAL_MAP_JSON}
+      principal_map: ${CONTOSO_PRINCIPAL_MAP_JSON}
 
   contoso-support:
     host: azure.ai.agent
     project: .
     language: docker
+    docker:
+      path: ./Dockerfile
+      context: .
+      platform: linux/amd64
+      remoteBuild: false
     uses:
       - ai-project
       - contoso-support-entitlements
@@ -39,9 +51,9 @@ services:
       - protocol: responses
         version: 2.0.0
     env:
-      MICROSOFT_FOUNDRY_MODEL_DEPLOYMENT_NAME: gpt-5.4-mini
+      MICROSOFT_FOUNDRY_MODEL_DEPLOYMENT_NAME: ${MICROSOFT_FOUNDRY_MODEL_DEPLOYMENT_NAME}
       CONTOSO_TENANT_KEY: TID-CONTOSO-01
-      CONTOSO_PRINCIPAL_MAP_JSON: "${{connections.contoso-support-entitlements.credentials.principal_map}}"
+      CONTOSO_PRINCIPAL_MAP_JSON: "$${{connections.contoso-support-entitlements.credentials.principal_map}}"
       OTEL_SERVICE_NAME: contoso-support
       ENABLE_INSTRUMENTATION: "true"
       ENABLE_SENSITIVE_DATA: "false"
@@ -54,3 +66,7 @@ services:
         - responses
       authorizationSchemes:
         - type: Entra
+
+infra:
+  provider: bicep
+  path: ./infra

@@ -1,0 +1,11 @@
+.azure
+.git
+.github
+.venv
+data/build
+internal
+reports
+site
+tests
+__pycache__
+*.pyc

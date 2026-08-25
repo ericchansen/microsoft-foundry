@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import sqlite3
 import threading
 from pathlib import Path
@@ -15,12 +16,9 @@ SUPPORT_TOOL_NAMES = frozenset(
     {
         "support_lookup_case",
         "support_search_cases",
-        "support_update_case",
         "customer_lookup",
         "catalog_lookup_product",
         "catalog_check_stock",
-        "orders_search_orders",
-        "operations_search_work_orders",
     }
 )
 
@@ -35,15 +33,25 @@ class CanonicalDataStore:
         spine_config: Path | None = None,
         seed_dir: Path | None = None,
         fixtures_dir: Path | None = None,
+        expected_sha256: str | None = None,
     ) -> None:
         self._database_path = database_path
         self._spine_config = spine_config
         self._seed_dir = seed_dir
         self._fixtures_dir = fixtures_dir
+        self._expected_sha256 = expected_sha256
         self._build_lock = threading.Lock()
+
+    def _verify_digest(self) -> None:
+        if self._expected_sha256 is None:
+            return
+        actual = hashlib.sha256(self._database_path.read_bytes()).hexdigest()
+        if actual != self._expected_sha256:
+            raise RuntimeError("the canonical support database failed its packaged integrity check")
 
     def ensure_database(self) -> Path:
         if self._database_path.is_file():
+            self._verify_digest()
             return self._database_path
         if self._spine_config is None or self._seed_dir is None or self._fixtures_dir is None:
             raise FileNotFoundError(f"canonical database does not exist: {self._database_path}")
@@ -58,11 +66,14 @@ class CanonicalDataStore:
                 )
                 if result.root / "contoso.db" != self._database_path:
                     raise RuntimeError("the canonical data build wrote an unexpected database path")
+        self._verify_digest()
         return self._database_path
 
     def connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.ensure_database())
+        database_path = self.ensure_database().resolve().as_posix()
+        connection = sqlite3.connect(f"file:{database_path}?mode=ro&immutable=1", uri=True)
         connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute("PRAGMA query_only = ON")
         return connection
 
 

@@ -55,6 +55,13 @@ The model therefore holds an explicit monthly reserve against the ceiling and
 reports it as a warning on every run. When a meter is published, the reserve is
 replaced with a real lookup.
 
+Contoso Support adds live meters for its Premium private registry, private
+endpoint, private DNS zone and planned `gpt-5.4-mini` token volume. The
+[hosted-agent deployment guidance](https://learn.microsoft.com/azure/foundry/agents/how-to/deploy-hosted-agent)
+defines CPU and memory allocations but the Retail Prices API exposes no
+unambiguous hosted-agent compute meter. The scale-to-zero pilot therefore holds
+its own non-zero monthly compute reserve and reports the same warning.
+
 ## Copilot Studio is not in the Azure budget
 
 [Microsoft Copilot Studio](https://learn.microsoft.com/microsoft-copilot-studio/billing-licensing)

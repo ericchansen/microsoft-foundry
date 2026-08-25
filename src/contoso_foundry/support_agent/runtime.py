@@ -17,22 +17,26 @@ from pydantic import Field
 from contoso_foundry.support_agent.identity import RequestIdentityBinding
 from contoso_foundry.support_agent.tools import CanonicalDataStore, ScopedToolSessionFactory, SupportToolDispatcher
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+PACKAGED_DATABASE = Path("/opt/contoso-support/contoso.db")
+PACKAGED_DATABASE_SHA256 = Path("/opt/contoso-support/contoso.db.sha256")
+PACKAGED_CONTRACTS = Path("/app/config/toolbox")
 
 
 def _build_dispatcher() -> SupportToolDispatcher:
-    data_root = Path(os.environ.get("CONTOSO_DATA_DIR", Path.home() / ".contoso-support"))
+    expected_sha256 = PACKAGED_DATABASE_SHA256.read_text(encoding="ascii").strip()
+    if (
+        len(expected_sha256) != 64 or any(character not in "0123456789abcdef" for character in expected_sha256)
+    ):
+        raise RuntimeError("the packaged canonical database digest is malformed")
     data_store = CanonicalDataStore(
-        database_path=data_root / "contoso.db",
-        spine_config=REPO_ROOT / "config" / "data-spine.yaml",
-        seed_dir=REPO_ROOT / "data" / "seed",
-        fixtures_dir=REPO_ROOT / "data" / "fixtures",
+        database_path=PACKAGED_DATABASE,
+        expected_sha256=expected_sha256,
     )
     binding = RequestIdentityBinding.from_environment(get_request_context)
     sessions = ScopedToolSessionFactory(
         data_store,
         binding,
-        contracts_dir=REPO_ROOT / "config" / "toolbox",
+        contracts_dir=PACKAGED_CONTRACTS,
     )
     return SupportToolDispatcher(sessions)
 
@@ -66,27 +70,39 @@ def _framework_tools(dispatcher: SupportToolDispatcher) -> list[Any]:
         }
         return dispatcher.call("support_search_cases", arguments)
 
-    @tool(approval_mode="always_require")
-    def update_case(
-        case_id: Annotated[str, Field(description="Canonical case identifier.")],
-        status: Annotated[
-            str | None,
-            Field(description="New status, only when the user explicitly requested it."),
-        ] = None,
-        severity: Annotated[
-            str | None,
-            Field(description="New severity, only when the user explicitly requested it."),
-        ] = None,
-    ) -> dict[str, Any]:
-        """Retriage a visible synthetic case after explicit approval."""
+    @tool(approval_mode="never_require")
+    def lookup_customer(
+        customer_id: Annotated[str, Field(description="Canonical customer identifier.")],
+    ) -> dict[str, Any] | None:
+        """Look up a case customer only when visible to the caller."""
+        return dispatcher.call("customer_lookup", {"customer_id": customer_id})
+
+    @tool(approval_mode="never_require")
+    def lookup_product(
+        product_id: Annotated[str, Field(description="Canonical product identifier.")],
+    ) -> dict[str, Any] | None:
+        """Look up a product from the shared Contoso catalogue."""
+        return dispatcher.call("catalog_lookup_product", {"product_id": product_id})
+
+    @tool(approval_mode="never_require")
+    def check_stock(
+        product_id: Annotated[str | None, Field(description="Optional canonical product identifier.")] = None,
+        location_id: Annotated[str | None, Field(description="Optional canonical location identifier.")] = None,
+        limit: Annotated[int, Field(description="Maximum rows, capped server-side.", ge=1, le=50)] = 25,
+    ) -> list[dict[str, Any]]:
+        """Check stock only at locations in the caller's resolved region."""
         arguments = {
             key: value
-            for key, value in {"case_id": case_id, "status": status, "severity": severity}.items()
+            for key, value in {
+                "product_id": product_id,
+                "location_id": location_id,
+                "limit": limit,
+            }.items()
             if value is not None
         }
-        return dispatcher.call("support_update_case", arguments)
+        return dispatcher.call("catalog_check_stock", arguments)
 
-    return [lookup_case, search_cases, update_case]
+    return [lookup_case, search_cases, lookup_customer, lookup_product, check_stock]
 
 
 def build_workflow_agent() -> Agent:

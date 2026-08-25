@@ -16,7 +16,6 @@ _PLATFORM_ENVIRONMENT = (
     "FOUNDRY_PROJECT_ENDPOINT",
     "FOUNDRY_AGENT_NAME",
     "FOUNDRY_AGENT_VERSION",
-    "FOUNDRY_AGENT_SESSION_ID",
 )
 
 
@@ -24,6 +23,7 @@ class PlatformRequestContext(Protocol):
     """The identity-bearing subset of AgentServer's request context."""
 
     user_id: str | None
+    call_id: str | None
 
 
 def _valid_platform_user_id(value: str) -> bool:
@@ -97,6 +97,9 @@ class RequestIdentityBinding:
         return cls(allowlist, context_getter, trust_getter=hosted_request_is_trusted)
 
     def resolve(self) -> Principal:
+        context = self._context_getter()
         if not self._trust_getter():
             raise UnknownPrincipalError("the request did not arrive with trusted hosted-agent identity context")
-        return self._allowlist.resolve(self._context_getter().user_id)
+        if not isinstance(context.call_id, str) or not _valid_platform_user_id(context.call_id):
+            raise UnknownPrincipalError("the request did not arrive with trusted hosted-agent identity context")
+        return self._allowlist.resolve(context.user_id)

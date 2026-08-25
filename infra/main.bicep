@@ -35,6 +35,7 @@ param budgetStartDate string = utcNow('yyyy-MM-01')
 
 var logAnalyticsReaderRoleId = '73c42c96-874c-492b-b04d-ab87d138a893'
 var privilegedMonitoringDataReaderRoleId = 'dbc9c667-e97f-4491-aee6-90b9cf960190'
+var foundryUserRoleId = '53ca6127-db72-4b80-b1b0-d745d6d5456d'
 
 @description('Tags applied to every resource that supports tags.')
 param tags object = {
@@ -113,6 +114,33 @@ resource foundryProjects 'Microsoft.CognitiveServices/accounts/projects@2026-07-
   }
 }]
 
+resource projectFoundryUsers 'Microsoft.Authorization/roleAssignments@2022-04-01' = [for (projectName, index) in projectNames: {
+  name: guid(foundryAccount.id, foundryProjects[index].id, foundryUserRoleId)
+  scope: foundryAccount
+  properties: {
+    principalId: foundryProjects[index].identity.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', foundryUserRoleId)
+  }
+}]
+
+resource supportModelDeployment 'Microsoft.CognitiveServices/accounts/deployments@2025-06-01' = {
+  parent: foundryAccount
+  name: 'support-gpt-5-4-mini'
+  sku: {
+    name: 'GlobalStandard'
+    capacity: 10
+  }
+  properties: {
+    model: {
+      format: 'OpenAI'
+      name: 'gpt-5.4-mini'
+      version: '2026-03-17'
+    }
+    versionUpgradeOption: 'NoAutoUpgrade'
+  }
+}
+
 resource projectAppInsightsConnections 'Microsoft.CognitiveServices/accounts/projects/connections@2026-05-01' = [for (projectName, index) in projectNames: {
   parent: foundryProjects[index]
   name: 'appinsights-${projectName}'
@@ -162,6 +190,7 @@ module identities 'modules/identity.bicep' = {
     githubRepository: githubRepository
     githubEnvironment: githubEnvironment
     foundryAccountName: foundryAccount.name
+    foundryProjectName: 'support'
   }
 }
 
@@ -223,6 +252,14 @@ output applicationInsightsResourceId string = applicationInsights.id
 output keyVaultName string = secureData.outputs.keyVaultName
 output storageAccountName string = secureData.outputs.storageAccountName
 output containerRegistryName string = secureData.outputs.containerRegistryName
+output containerRegistryEndpoint string = secureData.outputs.containerRegistryEndpoint
+output containerRegistryResourceId string = secureData.outputs.containerRegistryResourceId
+output registryVnetName string = secureData.outputs.registryVnetName
+output registryBuildSubnetResourceId string = secureData.outputs.registryBuildSubnetResourceId
 output deployIdentityName string = identities.outputs.deployIdentityName
 output deployIdentityClientId string = identities.outputs.deployIdentityClientId
 output runtimeIdentityName string = identities.outputs.runtimeIdentityName
+output AZURE_AI_PROJECT_ENDPOINT string = 'https://${foundryAccount.name}.services.ai.azure.com/api/projects/support'
+output AZURE_CONTAINER_REGISTRY_ENDPOINT string = secureData.outputs.containerRegistryEndpoint
+output AZURE_CONTAINER_REGISTRY_RESOURCE_ID string = secureData.outputs.containerRegistryResourceId
+output MICROSOFT_FOUNDRY_MODEL_DEPLOYMENT_NAME string = supportModelDeployment.name

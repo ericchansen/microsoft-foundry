@@ -158,6 +158,95 @@ line_items:
       tiered and the included free allocation is priced at zero, which the
       graduated tier maths applies automatically.
 
+  - id: support-private-acr
+    component: Contoso Support private Azure Container Registry
+    billing: azure
+    quantity: 30.4375
+    unit: registry-days
+    expect_unit_of_measure: 1/Day
+    meter:
+      serviceName: Container Registry
+      productName: Container Registry
+      skuName: Premium
+      meterName: Premium Registry Unit
+    source: https://azure.microsoft.com/pricing/details/container-registry/
+    notes: >-
+      One Premium registry for 730 hours / 24. Premium is required for a private
+      endpoint; no public fallback is accepted.
+
+  - id: support-acr-private-endpoint
+    component: Contoso Support ACR private endpoint
+    billing: azure
+    region: Global
+    quantity: 730
+    unit: endpoint-hours
+    expect_unit_of_measure: 1 Hour
+    meter:
+      serviceName: Virtual Network
+      productName: Virtual Network Private Link
+      skuName: Standard
+      meterName: Standard Private Endpoint
+    source: https://azure.microsoft.com/pricing/details/private-link/
+    notes: One private endpoint kept for the full 730-hour planning month.
+
+  - id: support-acr-private-dns
+    component: Contoso Support ACR private DNS zone
+    billing: azure
+    region: ""
+    quantity: 1
+    unit: zones
+    expect_unit_of_measure: "1"
+    meter:
+      serviceName: Azure DNS
+      productName: Azure DNS
+      skuName: Private
+      meterName: Private Zone
+    source: https://azure.microsoft.com/pricing/details/dns/
+    notes: One privatelink.azurecr.io zone; query volume is negligible for the synthetic smoke load.
+
+  - id: support-model-input
+    component: Contoso Support gpt-5.4-mini input
+    billing: azure
+    quantity: 2000000
+    unit: tokens
+    expect_unit_of_measure: 1M
+    meter:
+      serviceName: Foundry Models
+      productName: Azure OpenAI GPT5
+      skuName: 5.4 mini pp Inp Gl
+      meterName: 5.4 mini pp Inp Gl 1M Tokens
+    source: https://azure.microsoft.com/pricing/details/cognitive-services/openai-service/
+    notes: >-
+      2 million uncached Global Standard input tokens, roughly 600 synthetic
+      support turns at a 3K-token working context.
+
+  - id: support-model-output
+    component: Contoso Support gpt-5.4-mini output
+    billing: azure
+    quantity: 400000
+    unit: tokens
+    expect_unit_of_measure: 1M
+    meter:
+      serviceName: Foundry Models
+      productName: Azure OpenAI GPT5
+      skuName: 5.4 mini Opt Gl
+      meterName: 5.4 mini Opt Gl 1M Tokens
+    source: https://azure.microsoft.com/pricing/details/cognitive-services/openai-service/
+    notes: 400,000 Global Standard output tokens for the same synthetic pilot load.
+
+  - id: support-hosted-agent-compute
+    component: Contoso Support hosted-agent compute
+    billing: azure
+    pricing_status: unpublished
+    budget_reserve_usd: 40
+    quantity: 1
+    unit: agent-month
+    source: https://learn.microsoft.com/azure/foundry/agents/how-to/deploy-hosted-agent
+    notes: >-
+      Hosted-agent CPU and memory have no unambiguous Retail Prices API meter.
+      The scale-to-zero pilot holds 40 USD/month rather than claiming zero and must replace the
+      reserve when Microsoft publishes a meter.
+
   - id: sre-agent
     component: Azure SRE Agent
     billing: azure

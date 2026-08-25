@@ -19,6 +19,12 @@ from . import costs as costs_mod
 from . import discovery as discovery_mod
 from . import regions as regions_mod
 from . import scan as scan_mod
+from .support_agent.deployment import (
+    DeploymentVerificationError,
+    verify_deployment,
+)
+from .support_agent.evaluation import SupportEvaluationError
+from .support_agent.evaluation import evaluate as evaluate_support
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_INTERNAL = REPO_ROOT / "internal"
@@ -365,6 +371,30 @@ def cmd_toolbox(args: argparse.Namespace) -> int:
     return 1
 
 
+def cmd_support(args: argparse.Namespace) -> int:
+    if args.action == "evaluate":
+        results = evaluate_support(
+            database_path=Path(args.database),
+            config_path=Path(args.evaluation_config),
+            contracts_dir=Path(args.contracts),
+        )
+        for result in results:
+            print(f"PASS {result.id}: {result.outcome}")
+        print(f"\nPASS: {len(results)} deterministic support scenario(s) satisfied.")
+        return 0
+
+    evidence = verify_deployment(
+        project_endpoint=args.project_endpoint,
+        agent_name=args.agent_name,
+        expected_version=args.version,
+    )
+    print(
+        f"PASS: {evidence.agent_name} version {evidence.version} is {evidence.status}; "
+        f"{evidence.traffic_percentage}% traffic; {evidence.protocol}."
+    )
+    return 0
+
+
 # --------------------------------------------------------------------------- #
 
 def build_parser() -> argparse.ArgumentParser:
@@ -423,6 +453,30 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--out", default=str(DEFAULT_DATA / "build"), help="where the smoke run builds its dataset")
     p.set_defaults(func=cmd_toolbox)
 
+    p = sub.add_parser("support", help="evaluate and verify the Contoso Support agent")
+    support_sub = p.add_subparsers(dest="action", required=True)
+
+    support_evaluate = support_sub.add_parser(
+        "evaluate",
+        help="run deterministic, model-free security scenarios",
+    )
+    support_evaluate.add_argument("--database", default=str(DEFAULT_DATA / "build" / "contoso.db"))
+    support_evaluate.add_argument(
+        "--evaluation-config",
+        default=str(DEFAULT_CONFIG / "support-agent" / "evaluations.yaml"),
+    )
+    support_evaluate.add_argument("--contracts", default=str(DEFAULT_TOOLBOX))
+    support_evaluate.set_defaults(func=cmd_support)
+
+    support_verify = support_sub.add_parser(
+        "verify-deployment",
+        help="verify exact active version and endpoint routing",
+    )
+    support_verify.add_argument("--project-endpoint", required=True)
+    support_verify.add_argument("--agent-name", default="contoso-support")
+    support_verify.add_argument("--version", required=True)
+    support_verify.set_defaults(func=cmd_support)
+
     return parser
 
 def main(argv: list[str] | None = None) -> int:
@@ -431,7 +485,13 @@ def main(argv: list[str] | None = None) -> int:
         args.cache = None
     try:
         return int(args.func(args))
-    except (costs_mod.CostModelError, PermissionError, KeyError) as exc:
+    except (
+        costs_mod.CostModelError,
+        PermissionError,
+        KeyError,
+        SupportEvaluationError,
+        DeploymentVerificationError,
+    ) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     except Exception as exc:  # noqa: BLE001 - see comment

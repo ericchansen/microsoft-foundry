@@ -16,9 +16,13 @@ param githubEnvironment string
 @description('Name of the Foundry account receiving the runtime role assignment.')
 param foundryAccountName string
 
+@description('Foundry project where the deployment identity manages hosted agents.')
+param foundryProjectName string
+
 var contributorRoleId = 'b24988ac-6180-42a0-ab88-20f7382dd24c'
 var rbacAdministratorRoleId = 'f58310d9-a9f6-439a-9e8d-f62e7b41a168'
 var foundryUserRoleId = '53ca6127-db72-4b80-b1b0-d745d6d5456d'
+var foundryProjectManagerRoleId = 'eadc314b-1a2d-4efa-be10-5d325db5065e'
 
 resource deployIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30' = {
   name: '${resourcePrefix}-github-deploy'
@@ -64,6 +68,24 @@ resource deployRbacAdministrator 'Microsoft.Authorization/roleAssignments@2022-0
 
 resource foundryAccount 'Microsoft.CognitiveServices/accounts@2026-07-01' existing = {
   name: foundryAccountName
+}
+
+resource foundryProject 'Microsoft.CognitiveServices/accounts/projects@2026-07-01' existing = {
+  parent: foundryAccount
+  name: foundryProjectName
+}
+
+resource deployFoundryProjectManager 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(foundryProject.id, deployIdentity.id, foundryProjectManagerRoleId)
+  scope: foundryProject
+  properties: {
+    principalId: deployIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      foundryProjectManagerRoleId
+    )
+  }
 }
 
 resource runtimeFoundryUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = {

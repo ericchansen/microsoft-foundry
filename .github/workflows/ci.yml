@@ -45,6 +45,58 @@ jobs:
       - name: Ownership boundary (plan)
         run: foundry boundary --no-live
 
+  support:
+    name: hosted agent contracts and readiness
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install hosted runtime and project
+        run: |
+          pip install -e ".[dev]"
+          pip install -r agents/contoso-support/requirements.txt
+
+      - name: Deterministic scoped evaluation
+        run: |
+          foundry data verify --out data/build
+          foundry toolbox validate
+          foundry support evaluate
+
+      - name: Import current Agent Framework runtime
+        run: python -c "from contoso_foundry.support_agent.runtime import build_workflow_agent"
+
+      - name: Build linux/amd64 hosted image
+        run: docker build --platform linux/amd64 --tag contoso-support:ci .
+
+      - name: Verify protocol readiness endpoint
+        env:
+          CONTOSO_PRINCIPAL_MAP_JSON: '{"ci-synthetic-user":"OID-AMER-SUPLEAD-01"}'
+        run: |
+          container_id="$(docker run --detach --platform linux/amd64 --publish 8088:8088 \
+            --env FOUNDRY_PROJECT_ENDPOINT=https://unit.test/api/projects/support \
+            --env FOUNDRY_AGENT_NAME=contoso-support \
+            --env FOUNDRY_AGENT_VERSION=ci \
+            --env FOUNDRY_AGENT_SESSION_ID=ci \
+            --env MICROSOFT_FOUNDRY_MODEL_DEPLOYMENT_NAME=support-gpt-5-4-mini \
+            --env CONTOSO_TENANT_KEY=TID-CONTOSO-01 \
+            --env CONTOSO_PRINCIPAL_MAP_JSON \
+            contoso-support:ci)"
+          trap 'docker rm --force "$container_id" >/dev/null' EXIT
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8088/readiness >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs "$container_id"
+          exit 1
+
   # The published site is the thing a stranger sees, so its gates run on their own.
   site:
     name: docs build and public-content scan

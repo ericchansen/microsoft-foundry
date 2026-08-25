@@ -13,6 +13,12 @@ import pytest
 import yaml
 
 from contoso_foundry.data import build as build_mod
+from contoso_foundry.support_agent.deployment import (
+    DeploymentVerificationError,
+    verify_deployment,
+)
+from contoso_foundry.support_agent.evaluation import SupportEvaluationError
+from contoso_foundry.support_agent.evaluation import evaluate as evaluate_support
 from contoso_foundry.support_agent.identity import PrincipalAllowlist, RequestIdentityBinding
 from contoso_foundry.support_agent.tools import CanonicalDataStore, ScopedToolSessionFactory, SupportToolDispatcher
 from contoso_foundry.toolbox.identity import UnknownPrincipalError
@@ -24,6 +30,7 @@ CONTRACTS_DIR = REPO_ROOT / "config" / "toolbox"
 @dataclass(frozen=True)
 class FakeRequestContext:
     user_id: str | None
+    call_id: str | None = "call-0001"
 
 
 @pytest.fixture(scope="module")
@@ -45,7 +52,7 @@ def _sessions(
     allowlist = PrincipalAllowlist.from_json(json.dumps(mapping), tenant_key="TID-CONTOSO-01")
     binding = RequestIdentityBinding(
         allowlist,
-        lambda: FakeRequestContext(current_user.get()),
+        lambda: FakeRequestContext(current_user.get(), call_id=f"call-{current_user.get()}"),
         trust_getter=lambda: True,
     )
     return ScopedToolSessionFactory(
@@ -62,6 +69,20 @@ def test_unified_config_uses_current_hosted_responses_contract() -> None:
     assert agent["kind"] == "hosted"
     assert agent["protocols"] == [{"protocol": "responses", "version": "2.0.0"}]
     assert agent["agentEndpoint"]["authorizationSchemes"] == [{"type": "Entra"}]
+    assert config["services"]["ai-project"]["endpoint"] == "${AZURE_AI_PROJECT_ENDPOINT}"
+    assert agent["uses"] == ["ai-project", "contoso-support-entitlements"]
+    assert agent["env"]["CONTOSO_PRINCIPAL_MAP_JSON"].startswith("$${{connections.")
+    assert "APPLICATIONINSIGHTS_CONNECTION_STRING" not in agent["env"]
+    assert config["infra"] == {"provider": "bicep", "path": "./infra"}
+    assert config["requiredVersions"]["extensions"]["azure.ai.agents"] == ">=1.0.0-beta.8"
+    assert agent["docker"] == {
+        "path": "./Dockerfile",
+        "context": ".",
+        "platform": "linux/amd64",
+        "remoteBuild": False,
+    }
+    assert (REPO_ROOT / "Dockerfile").is_file()
+    assert not (REPO_ROOT / "agents" / "contoso-support" / "Dockerfile").exists()
     assert not (REPO_ROOT / "agent.yaml").exists()
     assert not (REPO_ROOT / "agent.manifest.yaml").exists()
 
@@ -71,6 +92,28 @@ def test_hosted_config_emits_distinct_nonsensitive_genai_telemetry() -> None:
     assert agent["env"]["OTEL_SERVICE_NAME"] == "contoso-support"
     assert agent["env"]["ENABLE_INSTRUMENTATION"] == "true"
     assert agent["env"]["ENABLE_SENSITIVE_DATA"] == "false"
+
+
+def test_container_packages_digest_checked_read_only_canonical_data() -> None:
+    runtime = (REPO_ROOT / "src" / "contoso_foundry" / "support_agent" / "runtime.py").read_text(encoding="utf-8")
+    dockerfile = (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")
+    assert "Path.home" not in runtime
+    assert "CONTOSO_DATA_DIR" not in runtime
+    assert 'Path("/opt/contoso-support/contoso.db")' in runtime
+    assert "contoso.db.sha256" in runtime
+    assert "data build --out /tmp/contoso-build" in dockerfile
+    assert "chmod 0444" in dockerfile
+
+
+def test_live_workflow_uses_private_runner_and_never_supplies_identity_header() -> None:
+    workflow = (REPO_ROOT / ".github" / "workflows" / "support-agent.yml").read_text(encoding="utf-8")
+    assert "runs-on: [self-hosted, linux, contoso-agents-vnet]" in workflow
+    assert "foundry boundary" in workflow
+    assert "foundry support verify-deployment" in workflow
+    assert "AGENT_CONTOSO_SUPPORT_RESPONSES_ENDPOINT" in workflow
+    assert "x-agent-user-id" not in workflow.lower()
+    assert '${{ inputs.confirm_resource_group }}' not in workflow.split("run: |", maxsplit=1)[1]
+    assert "cloud_RoleName == 'contoso-support'" in workflow
 
 
 @pytest.mark.parametrize("raw", ["", "[]", "{", '{"bad user": "OID-AMER-SUPLEAD-01"}', '{"user": "bad"}'])
@@ -108,6 +151,21 @@ def test_untrusted_direct_context_is_rejected_even_for_allowlisted_user() -> Non
         binding.resolve()
 
 
+@pytest.mark.parametrize("call_id", [None, "", "bad call", "\x00"])
+def test_missing_or_malformed_platform_call_id_fails_closed(call_id: str | None) -> None:
+    allowlist = PrincipalAllowlist.from_json(
+        '{"foundry-support-user":"OID-AMER-SUPLEAD-01"}',
+        tenant_key="TID-CONTOSO-01",
+    )
+    binding = RequestIdentityBinding(
+        allowlist,
+        lambda: FakeRequestContext("foundry-support-user", call_id=call_id),
+        trust_getter=lambda: True,
+    )
+    with pytest.raises(UnknownPrincipalError, match="trusted hosted-agent identity"):
+        binding.resolve()
+
+
 def test_support_dispatcher_exposes_only_support_dependencies(database: Path) -> None:
     current_user: contextvars.ContextVar[str | None] = contextvars.ContextVar("current_user", default=None)
     sessions = _sessions(database, current_user, {"foundry-support-user": "OID-AMER-SUPLEAD-01"})
@@ -115,6 +173,10 @@ def test_support_dispatcher_exposes_only_support_dependencies(database: Path) ->
     token = current_user.set("foundry-support-user")
     try:
         assert isinstance(dispatcher.call("support_search_cases", {"limit": 5}), list)
+        assert dispatcher.call("customer_lookup", {"customer_id": "CUST-00002"}) is not None
+        assert dispatcher.call("catalog_lookup_product", {"product_id": "PROD-0001"}) is not None
+        with pytest.raises(PermissionError, match="not allowed"):
+            dispatcher.call("support_update_case", {"case_id": "CASE-00005", "status": "closed"})
         with pytest.raises(PermissionError, match="not allowed"):
             dispatcher.call("hr_search_roster", {"limit": 5})
     finally:
@@ -180,3 +242,135 @@ def test_identity_is_resolved_for_every_tool_call(database: Path) -> None:
             sessions.call("support_search_cases", {"limit": 1})
     finally:
         current_user.reset(token)
+
+
+def test_canonical_database_is_opened_read_only(database: Path) -> None:
+    store = CanonicalDataStore(database_path=database)
+    with store.connect() as connection, pytest.raises(sqlite3.OperationalError, match="readonly"):
+        connection.execute("UPDATE support_cases SET status = 'closed'")
+
+
+def test_canonical_database_digest_mismatch_is_fatal(database: Path) -> None:
+    store = CanonicalDataStore(database_path=database, expected_sha256="0" * 64)
+    with pytest.raises(RuntimeError, match="integrity check"):
+        store.connect()
+
+
+def test_deterministic_evaluation_proves_scoped_outcomes(database: Path) -> None:
+    results = evaluate_support(
+        database_path=database,
+        config_path=REPO_ROOT / "config" / "support-agent" / "evaluations.yaml",
+        contracts_dir=CONTRACTS_DIR,
+    )
+    assert [result.id for result in results] == [
+        "support-can-read-visible-amer-case",
+        "support-cannot-read-apac-case-by-id",
+        "emea-and-apac-remain-distinct",
+        "apac-does-not-inherit-prior-request-scope",
+        "unknown-platform-principal-fails-closed",
+    ]
+
+
+def test_evaluation_dependency_failure_is_not_reported_as_success(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError, match="canonical database does not exist"):
+        evaluate_support(
+            database_path=tmp_path / "missing.db",
+            config_path=REPO_ROOT / "config" / "support-agent" / "evaluations.yaml",
+            contracts_dir=CONTRACTS_DIR,
+        )
+
+
+def test_evaluation_assertion_failure_is_fatal(database: Path, tmp_path: Path) -> None:
+    config = yaml.safe_load(
+        (REPO_ROOT / "config" / "support-agent" / "evaluations.yaml").read_text(encoding="utf-8")
+    )
+    config["scenarios"] = [config["scenarios"][0]]
+    config["scenarios"][0]["expect"]["value"] = "CASE-99999"
+    path = tmp_path / "evaluations.yaml"
+    path.write_text(yaml.safe_dump(config), encoding="utf-8")
+
+    with pytest.raises(SupportEvaluationError, match="unexpected evidence"):
+        evaluate_support(
+            database_path=database,
+            config_path=path,
+            contracts_dir=CONTRACTS_DIR,
+        )
+
+
+def test_deployment_verifier_requires_active_exclusive_responses_route(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    responses = [
+        {
+            "agent_endpoint": {
+                "version_selector": {
+                    "version_selection_rules": [
+                        {
+                            "agent_version": "7",
+                            "traffic_percentage": 100,
+                            "type": "FixedRatio",
+                        }
+                    ]
+                },
+                "protocol_configuration": {"responses": {}},
+            }
+        },
+        {
+            "status": "active",
+            "definition": {
+                "protocol_versions": [{"protocol": "responses", "version": "2.0.0"}]
+            },
+        },
+    ]
+    monkeypatch.setattr(
+        "contoso_foundry.support_agent.deployment.azure_cli.run",
+        lambda _args: responses.pop(0),
+    )
+
+    evidence = verify_deployment(
+        project_endpoint="https://unit.test/api/projects/contoso",
+        agent_name="contoso-support",
+        expected_version="7",
+    )
+    assert evidence.version == "7"
+    assert evidence.traffic_percentage == 100
+
+
+@pytest.mark.parametrize(
+    ("status", "rules", "message"),
+    [
+        ("failed", [{"agent_version": "7", "traffic_percentage": 100, "type": "FixedRatio"}], "not active"),
+        ("active", [{"agent_version": "6", "traffic_percentage": 100, "type": "FixedRatio"}], "route exactly"),
+        ("active", [{"agent_version": "7", "traffic_percentage": 50, "type": "FixedRatio"}], "route exactly"),
+    ],
+)
+def test_deployment_verifier_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    status: str,
+    rules: list[dict[str, object]],
+    message: str,
+) -> None:
+    responses = [
+        {
+            "agent_endpoint": {
+                "version_selector": {"version_selection_rules": rules},
+                "protocol_configuration": {"responses": {}},
+            }
+        },
+        {
+            "status": status,
+            "definition": {
+                "protocol_versions": [{"protocol": "responses", "version": "2.0.0"}]
+            },
+        },
+    ]
+    monkeypatch.setattr(
+        "contoso_foundry.support_agent.deployment.azure_cli.run",
+        lambda _args: responses.pop(0),
+    )
+    with pytest.raises(DeploymentVerificationError, match=message):
+        verify_deployment(
+            project_endpoint="https://unit.test/api/projects/contoso",
+            agent_name="contoso-support",
+            expected_version="7",
+        )

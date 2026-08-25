@@ -60,6 +60,13 @@ def test_projects_can_read_shared_telemetry(infra):
     assert "scope: applicationInsights" in infra["main"]
 
 
+def test_projects_and_deployer_have_least_privilege_foundry_data_roles(infra):
+    assert "foundryUserRoleId" in infra["main"]
+    assert "principalId: foundryProjects[index].identity.principalId" in infra["main"]
+    assert "foundryProjectManagerRoleId" in infra["identity"]
+    assert "scope: foundryProject" in infra["identity"]
+
+
 def test_monitoring_retention_is_at_least_ninety_days(infra):
     assert "@minValue(90)" in infra["monitoring"]
     assert "retentionInDays: 90" in infra["main"]
@@ -81,10 +88,22 @@ def test_storage_requires_oauth(infra):
     assert "allowBlobPublicAccess: false" in infra["data"]
 
 
-def test_acr_uses_cost_aware_secure_baseline(infra):
-    assert "name: 'Basic'" in infra["data"]
+def test_acr_is_private_and_supports_hosted_agent_images(infra):
+    assert "name: 'Premium'" in infra["data"]
     assert "adminUserEnabled: false" in infra["data"]
+    assert "publicNetworkAccess: 'Disabled'" in infra["data"]
+    assert "networkRuleBypassOptions: 'None'" in infra["data"]
+    assert "customNetworkInterfaceName: '${resourcePrefix}-registry-endpoint-nic'" in infra["data"]
     assert "retentionPolicy:" in infra["data"]
+    assert "privateEndpoints@2025-07-01" in infra["data"]
+    assert "privateDnsZones@2024-06-01" in infra["data"]
+
+
+def test_support_model_deployment_is_explicit_and_pinned(infra):
+    assert "accounts/deployments@2025-06-01" in infra["main"]
+    assert "name: 'gpt-5.4-mini'" in infra["main"]
+    assert "version: '2026-03-17'" in infra["main"]
+    assert "versionUpgradeOption: 'NoAutoUpgrade'" in infra["main"]
 
 
 def test_budget_alerts_cannot_omit_recipients(infra):

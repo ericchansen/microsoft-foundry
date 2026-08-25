@@ -63,6 +63,21 @@ resources:
   - name: container-registry
     kind: Microsoft.ContainerRegistry/registries
     scope: providers/Microsoft.ContainerRegistry/registries/contosoagents*
+  - name: registry-vnet
+    kind: Microsoft.Network/virtualNetworks
+    scope: providers/Microsoft.Network/virtualNetworks/contoso-agents-registry-vnet
+  - name: registry-private-endpoint
+    kind: Microsoft.Network/privateEndpoints
+    scope: providers/Microsoft.Network/privateEndpoints/contoso-agents-registry-endpoint
+  - name: registry-private-endpoint-nic
+    kind: Microsoft.Network/networkInterfaces
+    scope: providers/Microsoft.Network/networkInterfaces/contoso-agents-registry-endpoint-nic
+  - name: registry-private-dns
+    kind: Microsoft.Network/privateDnsZones
+    scope: providers/Microsoft.Network/privateDnsZones/privatelink.azurecr.io
+  - name: support-model
+    kind: Microsoft.CognitiveServices/accounts/deployments
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/deployments/support-gpt-5-4-mini
   - name: action-group
     kind: Microsoft.Insights/actionGroups
     scope: providers/Microsoft.Insights/actionGroups/contoso-agents-alerts
@@ -89,6 +104,10 @@ role_assignments:
     role: Foundry User
     principal: agent-runtime-identity
     scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry
+  - name: deploy-manages-support-project
+    role: Foundry Project Manager
+    principal: github-deploy-identity
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/projects/support
   - name: deploy-contributor
     role: Contributor
     principal: github-deploy-identity
@@ -101,6 +120,10 @@ role_assignments:
     role: Log Analytics Reader
     principal: travel-project
     scope: providers/microsoft.insights/components/contoso-agents-insights
+  - name: travel-uses-foundry
+    role: Foundry User
+    principal: travel-project
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry
   - name: travel-reads-monitoring-data
     role: Privileged Monitoring Data Reader
     principal: travel-project
@@ -109,6 +132,10 @@ role_assignments:
     role: Log Analytics Reader
     principal: support-project
     scope: providers/microsoft.insights/components/contoso-agents-insights
+  - name: support-uses-foundry
+    role: Foundry User
+    principal: support-project
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry
   - name: support-reads-monitoring-data
     role: Privileged Monitoring Data Reader
     principal: support-project
@@ -117,6 +144,10 @@ role_assignments:
     role: Log Analytics Reader
     principal: research-project
     scope: providers/microsoft.insights/components/contoso-agents-insights
+  - name: research-uses-foundry
+    role: Foundry User
+    principal: research-project
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry
   - name: research-reads-monitoring-data
     role: Privileged Monitoring Data Reader
     principal: research-project
@@ -125,6 +156,10 @@ role_assignments:
     role: Log Analytics Reader
     principal: platform-project
     scope: providers/microsoft.insights/components/contoso-agents-insights
+  - name: platform-uses-foundry
+    role: Foundry User
+    principal: platform-project
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry
   - name: platform-reads-monitoring-data
     role: Privileged Monitoring Data Reader
     principal: platform-project
