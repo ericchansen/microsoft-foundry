@@ -1,0 +1,112 @@
+site_name: Contoso Agent Platform
+site_description: >-
+  How Contoso builds a governed, multi-agent platform on Microsoft Foundry -
+  the architecture, the region and cost decisions, and the evidence behind them.
+site_url: https://ericchansen.github.io/microsoft-foundry/
+repo_url: https://github.com/ericchansen/microsoft-foundry
+repo_name: ericchansen/microsoft-foundry
+edit_uri: edit/main/docs/
+
+# Everything published lives in docs/. internal/ is deliberately outside this
+# tree so identifier-bearing evidence cannot reach the build. Do not change
+# docs_dir without also updating scan.check_internal_is_excluded.
+docs_dir: docs
+site_dir: site
+
+# Fail on a broken internal link, an unrecognised nav entry or an orphaned page.
+strict: true
+
+theme:
+  name: material
+  language: en
+  icon:
+    logo: material/robot-outline
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - content.code.copy
+    - navigation.instant
+    - navigation.sections
+    - navigation.top
+    - navigation.tracking
+    - search.highlight
+    - toc.follow
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  # Mermaid. See https://squidfunk.github.io/mkdocs-material/reference/diagrams/
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+plugins:
+  - search
+
+nav:
+  - Home: index.md
+  - Architecture:
+      - Overview: architecture/overview.md
+  - Shared data and tools:
+      - Data spine: data/overview.md
+      - Provenance: data/provenance.md
+      - Toolbox contracts: data/toolbox.md
+  - Agents:
+      - Contoso Travel: agents/travel.md
+      - Contoso Support: agents/contoso-support.md
+      - Contoso Research: agents/research.md
+      - Contoso SRE: agents/contoso-sre.md
+      - Contoso Approvals: agents/contoso-approvals.md
+      - Contoso Field: agents/field.md
+      - Contoso Concierge: agents/concierge.md
+  - Platform decisions:
+      - Region selection: platform/regions.md
+      - Cost methodology: platform/costs.md
+      - Ownership boundary: platform/boundaries.md
+      - Telemetry spine: platform/telemetry-spine.md
+      - AI gateway: platform/ai-gateway.md
+      - Model governance: platform/model-governance.md
+      - Power Platform: platform/power-platform.md
+  - Operations:
+      - Verification: operations/verification.md
+      - Control Plane coverage: operations/control-plane-coverage.md
+      - Concierge ALM: operations/concierge-alm.md
+      - Concierge teardown: operations/concierge-teardown.md
+  - Reference:
+      - Sources: reference/sources.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/ericchansen/microsoft-foundry
+      name: This project on GitHub
+
+copyright: >-
+  Contoso is a fictitious company. This site documents a demonstration build and
+  is not affiliated with or endorsed by Microsoft.

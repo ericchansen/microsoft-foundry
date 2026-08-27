@@ -1,0 +1,111 @@
+# Verification
+
+Every claim on this site is reproducible. This page is how.
+
+## Setup
+
+```bash
+git clone https://github.com/ericchansen/microsoft-foundry.git
+cd microsoft-foundry
+python -m venv .venv && . .venv/bin/activate     # Windows: .venv\Scripts\activate
+pip install -e ".[dev,docs,research,field]"
+```
+
+The Azure-facing commands use the Azure CLI, so they authenticate exactly the way
+a human does:
+
+```bash
+az login
+az account set --subscription "<your subscription>"
+```
+
+## The commands
+
+| Command | Needs Azure login | What it does |
+| --- | :---: | --- |
+| `foundry discover` | yes | Read-only sweep of subscription, resource groups, resource providers and licensing. |
+| `foundry regions` | yes | Eliminates and ranks candidate regions. |
+| `foundry costs` | no | Prices the estimate live and enforces the configured environment policy. |
+| `foundry boundary` | optional | Validates the ownership boundary. `--no-live` skips the Azure checks. |
+| `foundry platform-inventory` | optional | Verifies SRE Agent and Logic Apps Control Plane platform coverage. |
+| `foundry scan <path>` | no | Fails if publishable content contains an identifier or secret. |
+| `foundry data verify` | no | Rebuilds the canonical synthetic data and checks integrity, privacy and provenance. |
+| `foundry toolbox validate` | no | Validates server-scoped tool contracts. |
+| `foundry support evaluate` | no | Runs deterministic Contoso Support row-level security scenarios. |
+| `foundry support verify-deployment` | yes | Verifies the exact active hosted-agent version and exclusive route. |
+
+`foundry costs` and `foundry scan` need no Azure credentials, so anyone can
+verify the cost-policy gate and the publishing gate.
+
+## Where output goes
+
+Output is split by whether it contains identifiers.
+
+| Destination | Contents | Published? | Tracked in git? |
+| --- | --- | :---: | :---: |
+| `reports/` | Sanitized summaries | no | no |
+| `internal/` | Full evidence including subscription-scoped numbers | **never** | **never** |
+
+`internal/` is excluded from version control and sits outside the documentation
+source tree, so it cannot reach this site by accident. The scanner asserts both
+conditions on every run rather than trusting them.
+
+Nothing generated is committed. Reports regenerate from live APIs, so a committed
+copy could only ever be stale — and a stale cost report is worse than none.
+
+## The publishing gate
+
+Before this site deploys, the **generated HTML** is scanned — not the Markdown
+source. Anything embedded by a theme, a plugin or a Mermaid diagram is checked
+too. The build fails on:
+
+- Tenant or subscription GUIDs
+- `onmicrosoft.com` domains
+- Azure resource IDs
+- Secrets, keys and connection strings
+- Live tenant-specific endpoints
+- Non-synthetic personal data
+
+Deployment is downstream of the scan, so a failing scan means nothing publishes.
+
+Findings are located, never quoted: a finding reports the path, line, column and
+rule name, and never the text that matched. A scanner that prints the secret
+it found in a public build log has leaked the secret.
+
+## Continuous integration
+
+Every push runs:
+
+1. `ruff` lint
+2. `pytest` — the scanner and its quote-free reporting, the tier maths, the
+   region gates and ranking, and the ownership-boundary rules.
+   No test needs network access or an Azure login.
+3. `foundry boundary --no-live` — the plan can never drift out of the boundary.
+4. `foundry platform-inventory --no-live` — both platform declarations remain machine-checkable.
+5. `foundry costs` — live pricing against the real API, hard-failing above the configured policy.
+6. `mkdocs build --strict` — a broken internal link fails the build.
+7. `foundry scan site` — the publishing gate above.
+
+The dedicated Contoso Support job also installs the pinned public-preview
+hosting packages, builds the `linux/amd64` image, runs the deterministic scoped
+evaluation and polls the protocol library's `/readiness` endpoint.
+
+## Contoso Support live workflow gate
+
+The protected `Contoso Support hosted agent` workflow is the live gate. It must
+run on its declared GitHub-hosted runner under the protected `contoso-agents`
+environment, verify the exact active version and 100 percent route, exercise
+authenticated `/responses` scenarios, and observe `contoso-support` GenAI spans
+in shared Application Insights. Missing credentials, capacity failure,
+evaluation error, or absent telemetry is a blocker, not a skipped success.
+
+The cost gate runs against live prices deliberately. If Microsoft raises a price
+enough to exceed the environment's configured policy, the build should break;
+that failure is the alert.
+
+## Re-verifying documentation claims
+
+Product capabilities that Microsoft publishes only as documentation tables are
+recorded in `config/capability-matrix.yaml`, each with a source URL and the date a
+human last checked it. [Sources](../reference/sources.md) lists every first-party
+page this site relies on.

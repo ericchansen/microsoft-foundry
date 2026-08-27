@@ -1,0 +1,125 @@
+# Contoso Support hosted agent
+
+Contoso Support is the production-representative **public preview** hosted-agent
+slice. It demonstrates the deployment and security boundaries that matter in
+production, but it is not described as production-ready because Microsoft
+Foundry hosted agents are a preview service without an SLA.
+
+## One endpoint, three agents
+
+The public surface is one
+[Responses protocol 2.0 endpoint](https://learn.microsoft.com/azure/foundry/agents/how-to/deploy-hosted-agent#container-requirements).
+Inside the container, Microsoft Agent Framework executes a sequential workflow:
+
+```mermaid
+flowchart LR
+    U[Authenticated caller] --> R[ResponsesHostServer]
+    R --> I[Support intake]
+    I --> V[Scoped investigator]
+    V --> P[Policy reviewer]
+    P --> R
+```
+
+The intake agent classifies the request without inferring identity. The
+investigator is the only agent with tools. The policy reviewer rejects
+unsupported claims, hidden-scope inference and unapproved mutation before the
+answer leaves the workflow. Agent Framework emits both agent and workflow
+[OpenTelemetry spans](https://learn.microsoft.com/agent-framework/workflows/observability).
+
+`ResponsesHostServer` uses Microsoft's protocol library rather than a custom
+HTTP shim. The library owns `/responses`, `/readiness`, streaming, background
+response lifecycle and cancellation, as described in the
+[hosted-agent container contract](https://learn.microsoft.com/azure/foundry/agents/how-to/deploy-hosted-agent#responses-protocol-library).
+There is no legacy `/invoke` route.
+
+## Identity becomes scope only on the server
+
+The endpoint requires Microsoft Entra authorization, but AgentServer's ambient
+`user_id` is a container partition key rather than an authorization-grade
+principal. The runtime deliberately ignores it. Deployment configuration binds
+the hosted Support service to one least-privilege canonical synthetic support
+principal; callers cannot select another object, tenant, role, or region through
+a header, prompt, or tool argument.
+
+`IdentityResolver` maps that fixed server-side key to immutable roles and
+regions, and `ScopedRepository` injects mandatory row predicates before SQL
+executes. A fresh Toolbox and read-only SQLite connection are created for every
+tool call. Responses 2.0's opaque `call_id` is required for request correlation,
+not treated as identity.
+
+This is intentionally a role-bound service identity, not per-user delegation.
+Until the hosted runtime exposes an authorization-grade caller claim, claiming
+end-user row scope would be unsafe. Deterministic multi-principal evaluations use
+an explicit test-only resolver; the production adapter cannot enable it.
+
+## Deployment boundary
+
+The unified [`azure.yaml`
+contract](https://learn.microsoft.com/azure/foundry/agents/concepts/azure-yaml-reference)
+connects to the owned `support` project, declares Responses 2.0 and uses the
+repository Bicep instead of synthesizing another resource group.
+
+The image is built for `linux/amd64`, pushed once to the project-owned shared
+Basic Azure Container Registry and deployed by SHA-256 digest. The registry
+endpoint is network-reachable for the build, but the images are not public:
+anonymous pull and admin credentials are disabled. The deployment identity has
+only `AcrPush` on the registry, while `azd deploy` creates the per-agent identity
+and grants only `AcrPull`, following the
+[private ACR workflow](https://learn.microsoft.com/azure/foundry/agents/how-to/deploy-hosted-agent-private-azure-container-registry)
+and [hosted-agent permission model](https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agent-permissions).
+
+The manual workflow resolves the pushed manifest digest, sets the prebuilt
+`image` reference, and rejects a malformed digest before deployment. It never
+uses a public image repository. All provisioning is preceded by the live
+ownership-boundary gate, so every mutation remains inside the owned resource
+group.
+
+## Evidence gates
+
+The model-free evaluation uses the canonical generated database and the real
+Toolbox contracts:
+
+```bash
+foundry data verify --out data/build
+foundry toolbox validate
+foundry support evaluate
+```
+
+It proves a visible AMER lookup, a hidden APAC lookup, evaluation-only
+multi-principal isolation, and an unknown-principal denial. Dependency, data and
+expectation failures exit non-zero rather than producing a partial pass.
+
+CI also builds the exact container and polls `/readiness`. The protected live
+workflow then invokes `/responses` without supplying an identity header, checks
+a visible and hidden synthetic case, and queries shared Application Insights
+for GenAI spans whose `OTEL_SERVICE_NAME` is `contoso-support`. Sensitive prompt
+and completion capture is disabled.
+
+After deployment, the following check reads the Foundry data-plane API and
+fails unless the exact version is active, exposes Responses 2.0 and is the only
+`FixedRatio` route at 100 percent:
+
+```bash
+foundry support verify-deployment \
+  --project-endpoint "$AZURE_AI_PROJECT_ENDPOINT" \
+  --version "$AGENT_CONTOSO_SUPPORT_VERSION"
+```
+
+Foundry supports exactly one version at 100 percent rather than traffic
+splitting; see
+[hosted-agent endpoint routing](https://learn.microsoft.com/azure/foundry/agents/how-to/manage-hosted-agent#configure-agent-endpoint-routing).
+
+## Honest limitations and cost
+
+The canonical SQLite database is generated while the image is built, hashed,
+packaged under a root-owned path and opened in immutable read-only mode. The
+runtime verifies the digest before every tool connection. The hosted surface
+exposes only support, customer and catalogue reads; the shared Toolbox write
+contract remains unavailable. This demonstrates row-level authorization, not a
+durable case-management store.
+
+The [cost model](../platform/costs.md) leaves the shared Basic registry charge to
+the Gateway/platform integration slice, which records that estate-wide fixed cost
+once. Support has an explicit input/output token workload in the checked-in cost
+assumptions. Hosted-agent CPU and memory have no unambiguous retail meter, so
+the model holds a non-zero reserve rather than claiming that compute is free.

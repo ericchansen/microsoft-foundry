@@ -1,0 +1,21 @@
+{
+  "plugins": {
+    "md013": {
+      "comment": "Line length is a prose judgement, not a lint rule. Ruff covers code.",
+      "enabled": false
+    },
+    "md033": {
+      "comment": "Material for MkDocs relies on inline HTML for admonitions and grids.",
+      "enabled": false
+    },
+    "md046": {
+      "comment": "Mermaid fences and indented code legitimately coexist.",
+      "enabled": false
+    }
+  },
+  "extensions": {
+    "front-matter": {
+      "enabled": true
+    }
+  }
+}
