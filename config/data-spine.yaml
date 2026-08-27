@@ -1,0 +1,68 @@
+# Declarative input for the shared Contoso data spine.
+#
+# Everything the generator produces is a pure function of this file, the seed
+# tables under data/seed/, and the generator code. There is no wall-clock time,
+# no network call and no machine-specific value anywhere in the pipeline, which
+# is what makes `foundry data build` reproducible byte for byte.
+#
+# Changing anything here changes the dataset, so `data/build.lock.json` must be
+# regenerated in the same commit. CI compares a fresh build against that lock.
+
+version: 1
+
+# Consumed by random.Random in a fixed order. Bump it only when you intend the
+# whole dataset to change.
+seed: 20260824
+
+# The dataset's "today". Every generated date is an offset from this anchor,
+# never from the current date, so a build in 2027 produces the same rows.
+as_of: "2026-01-05"
+
+currency: USD
+
+# Row counts. Deliberately small: the point of this dataset is that a developer
+# can rebuild it in under a second and reason about the whole thing, not that it
+# looks like production.
+volumes:
+  customers: 200
+  employees: 300
+  products: 120
+  orders: 400
+  support_cases: 150
+  travel_bookings: 120
+  work_orders: 100
+
+privacy:
+  # Every generated address uses this domain. RFC 2606 reserves example.com and
+  # Microsoft reserves contoso.com for documentation; both are treated as
+  # provably synthetic by the public-content scanner.
+  email_domain: contoso.com
+
+  # Every generated telephone number is rendered as +1 <area>-555-01xx. The
+  # 555-01xx block is reserved for fiction, so a number that escapes into a
+  # public artifact still cannot reach a person.
+  phone_area_codes: [206, 212, 312, 415, 425, 503, 617, 720]
+
+  # Minimum number of people an HR aggregate must cover before a figure is
+  # returned. Below this, the tool returns a suppression marker instead of a
+  # number, because a count of one is a disclosure wearing a statistic's coat.
+  minimum_cohort: 5
+
+# Canonical identifier formats. The tests assert every generated key matches,
+# so an agent, a tool contract and a fixture can never disagree about what a
+# customer ID looks like.
+identifiers:
+  customer: "CUST-{:05d}"
+  employee: "EMP-{:04d}"
+  product: "PROD-{:04d}"
+  supplier: "SUP-{:03d}"
+  location: "LOC-{:03d}"
+  order: "ORD-{:06d}"
+  order_line: "OL-{:06d}-{:02d}"
+  invoice: "INV-{:06d}"
+  support_case: "CASE-{:05d}"
+  support_note: "NOTE-{:06d}"
+  travel_route: "ROUTE-{:04d}"
+  travel_fare: "FARE-{:05d}"
+  travel_booking: "TRIP-{:05d}"
+  work_order: "WO-{:05d}"

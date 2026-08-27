@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<environmentvariabledefinition schemaname="ccs_FoundrySpecialistBaseUrl">
+  <description default="Target-specific base URL for the Foundry specialist gateway. No default is committed.">
+    <label description="Target-specific base URL for the Foundry specialist gateway. No default is committed." languagecode="1033" />
+  </description>
+  <displayname default="Foundry specialist base URL">
+    <label description="Foundry specialist base URL" languagecode="1033" />
+  </displayname>
+  <introducedversion>1.0.0.0</introducedversion>
+  <iscustomizable>1</iscustomizable>
+  <isrequired>1</isrequired>
+  <type>100000000</type>
+</environmentvariabledefinition>

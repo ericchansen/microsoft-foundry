@@ -1,0 +1,2 @@
+{"arguments":{"limit":200},"id":"emea-roster","principal_oid":"OID-EMEA-HRBP-01","tenant_key":"TID-CONTOSO-01","tool":"hr_search_roster"}
+{"arguments":{"limit":200},"assert_disjoint_with":"emea-roster","id":"apac-roster","principal_oid":"OID-APAC-HRBP-01","tenant_key":"TID-CONTOSO-01","tool":"hr_search_roster"}

@@ -1,0 +1,132 @@
+capability: orders
+version: 1.0.0
+title: Orders and invoices
+summary: >-
+  Commercial history for customers the caller can already see. Orders and
+  invoices carry no region column of their own; they inherit scope from the
+  customer they belong to, which is why an order cannot be used as a side door
+  into an out-of-region account.
+
+identity:
+  scope_source: server
+  policy_keys: [oid, tid]
+
+tools:
+  - name: orders_lookup_order
+    title: Look up an order
+    summary: >-
+      Fetch one order with its lines. Returns nothing when the owning customer is
+      outside the caller's scope.
+    side_effect: read
+    data_classification: internal
+    required_roles: [order.read]
+    parameters:
+      type: object
+      additionalProperties: false
+      properties:
+        order_id:
+          type: string
+          description: Canonical order identifier, for example ORD-000123.
+          pattern: '^ORD-\d{6}$'
+        include_lines:
+          type: boolean
+          description: Include the order lines alongside the header. Defaults to true.
+      required: [order_id]
+    returns:
+      type: [object, 'null']
+      description: The order header, optionally with its lines.
+    examples:
+      - description: Retrieve one order and its lines.
+        arguments: {order_id: ORD-000001}
+
+  - name: orders_search_orders
+    title: Search orders
+    summary: List orders for in-scope customers, filtered by status, customer or fulfilling location.
+    side_effect: read
+    data_classification: internal
+    required_roles: [order.read]
+    parameters:
+      type: object
+      additionalProperties: false
+      properties:
+        customer_id:
+          type: string
+          description: Canonical customer identifier to restrict to one account.
+          pattern: '^CUST-\d{5}$'
+        status:
+          type: string
+          description: Order status.
+          enum: [placed, picked, shipped, delivered, cancelled]
+        location_id:
+          type: string
+          description: Canonical location identifier the order is fulfilled from.
+        limit:
+          type: integer
+          description: Maximum rows to return, capped server-side.
+          minimum: 1
+          maximum: 200
+      required: []
+    returns:
+      type: array
+      description: Orders visible to the caller.
+    examples:
+      - description: Cancelled orders in the caller's scope.
+        arguments: {status: cancelled, limit: 5}
+
+  - name: orders_lookup_invoice
+    title: Look up an invoice
+    summary: Fetch one invoice by canonical id, scoped through its customer.
+    side_effect: read
+    data_classification: internal
+    required_roles: [order.read]
+    parameters:
+      type: object
+      additionalProperties: false
+      properties:
+        invoice_id:
+          type: string
+          description: Canonical invoice identifier, for example INV-000045.
+          pattern: '^INV-\d{6}$'
+      required: [invoice_id]
+    returns:
+      type: [object, 'null']
+      description: The invoice record, or null when not visible.
+    examples:
+      - description: Retrieve one invoice.
+        arguments: {invoice_id: INV-000001}
+
+  - name: orders_search_invoices
+    title: Search invoices
+    summary: >-
+      List invoices for in-scope customers. Useful for answering "what is
+      outstanding" without granting access to the whole ledger.
+    side_effect: read
+    data_classification: internal
+    required_roles: [order.read]
+    parameters:
+      type: object
+      additionalProperties: false
+      properties:
+        customer_id:
+          type: string
+          description: Canonical customer identifier to restrict to one account.
+          pattern: '^CUST-\d{5}$'
+        order_id:
+          type: string
+          description: Canonical order identifier the invoice was raised against.
+        status:
+          type: string
+          description: Invoice status.
+          enum: [draft, issued, part_paid, paid, overdue]
+        limit:
+          type: integer
+          description: Maximum rows to return, capped server-side.
+          minimum: 1
+          maximum: 200
+      required: []
+    returns:
+      type: array
+      description: Invoices visible to the caller.
+    examples:
+      - description: Unpaid invoices for one account.
+        arguments: {customer_id: CUST-00001, status: issued}

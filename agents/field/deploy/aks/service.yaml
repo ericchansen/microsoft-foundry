@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: contoso-field
+  namespace: contoso-agents
+  labels:
+    app.kubernetes.io/name: contoso-field
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: contoso-field
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP

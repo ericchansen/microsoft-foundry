@@ -1,0 +1,28 @@
+region: northcentralus
+display_name: North Central US
+geography: United States
+monthly_basket_usd: 191.42
+distance_km: 0
+availability_zones: 0
+evaluated: 63
+qualified: 6
+runners_up:
+- region: centralus
+  monthly_basket_usd: 191.42
+  distance_km: 498
+- region: eastus2
+  monthly_basket_usd: 191.42
+  distance_km: 983
+- region: francecentral
+  monthly_basket_usd: 191.42
+  distance_km: 6795
+- region: canadacentral
+  monthly_basket_usd: 207.19
+  distance_km: 701
+- region: swedencentral
+  monthly_basket_usd: 238.52
+  distance_km: 6752
+generated_at: '2026-08-25T00:21:58+00:00'
+generated_by: foundry regions
+note: 'Generated file. Do not edit by hand: change config/region-requirements.yaml
+  or config/capability-matrix.yaml and re-run `foundry regions`.'

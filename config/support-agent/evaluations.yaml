@@ -1,0 +1,55 @@
+version: 1
+tenant_key: TID-CONTOSO-01
+
+# Opaque request identities are mapped server-side to canonical synthetic
+# principals. No role, region, or scope is accepted from a scenario/tool input.
+principal_map:
+  eval-support-amer: OID-AMER-SUPLEAD-01
+  eval-hr-emea: OID-EMEA-HRBP-01
+  eval-hr-apac: OID-APAC-HRBP-01
+
+scenarios:
+  - id: support-can-read-visible-amer-case
+    principal: eval-support-amer
+    tool: support_lookup_case
+    arguments:
+      case_id: CASE-00005
+    expect:
+      kind: field_equals
+      field: case_id
+      value: CASE-00005
+
+  - id: support-cannot-read-apac-case-by-id
+    principal: eval-support-amer
+    tool: support_lookup_case
+    arguments:
+      case_id: CASE-00003
+    expect:
+      kind: "null"
+
+  - id: emea-and-apac-remain-distinct
+    principal: eval-hr-emea
+    tool: hr_search_roster
+    arguments:
+      limit: 200
+    expect:
+      kind: rows_field_equals
+      field: region
+      value: EMEA
+
+  - id: apac-does-not-inherit-prior-request-scope
+    principal: eval-hr-apac
+    tool: hr_search_roster
+    arguments:
+      limit: 200
+    expect:
+      kind: rows_field_equals
+      field: region
+      value: APAC
+
+  - id: unknown-platform-principal-fails-closed
+    principal: forged-cross-region-value
+    tool: support_search_cases
+    arguments:
+      limit: 1
+    expect_error: UnknownPrincipalError

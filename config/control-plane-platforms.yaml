@@ -1,0 +1,50 @@
+version: 1
+resource_group: rg-contoso-agents
+ownership_tags:
+  project: contoso-agents
+  managed-by: microsoft-foundry-demo
+  boundary: rg-contoso-agents
+platforms:
+  - id: contoso-sre
+    enabled_by_default: false
+    display_name: Contoso SRE
+    platform: Azure SRE Agent
+    resource_name: contoso-agents-sre-control-plane
+    resource_type: Microsoft.App/agents
+    api_version: 2026-01-01
+    identity_type: SystemAssigned,UserAssigned
+    user_assigned_identity_name: contoso-agents-sre
+    application_insights_name: contoso-agents-insights
+    operator_group_principal_environment: SRE_OPERATOR_GROUP_OBJECT_ID
+    rbac:
+      resource_group_role_definition_ids:
+        - acdd72a7-3385-48ef-bd42-f606fba81ae7
+        - 43d0d8ad-25c7-4714-9337-8ba259a9fe05
+      application_insights_role_definition_ids:
+        - 73c42c96-874c-492b-b04d-ab87d138a893
+      operator_role_definition_id: 2d84a65a-63b2-4343-bbb6-31105d857bc1
+      forbidden_operator_role_definition_ids:
+        - e79298df-d852-4c6d-84f9-5d13249d1e55
+    control_plane:
+      discovery: automatic
+      lifecycle:
+        - start
+        - stop
+      observability: supported
+    source: https://learn.microsoft.com/azure/foundry/control-plane/how-to-manage-agents
+  - id: contoso-approvals
+    enabled_by_default: false
+    display_name: Contoso Approvals
+    platform: Azure Logic Apps agent loop
+    resource_name: contoso-agents-approvals-loop
+    resource_type: Microsoft.Logic/workflows
+    api_version: 2019-05-01
+    identity_type: UserAssigned
+    expected_action_type: Agent
+    control_plane:
+      discovery: automatic
+      lifecycle:
+        - start
+        - stop
+      observability: unsupported
+    source: https://learn.microsoft.com/azure/foundry/control-plane/how-to-manage-agents

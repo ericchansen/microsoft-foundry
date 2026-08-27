@@ -1,0 +1,411 @@
+# v1 cost estimate — the machine-checkable budget model.
+#
+# HOW THIS IS USED
+#   `foundry costs` prices every line item below against the Azure Retail Prices
+#   API and fails if the Azure total exceeds the ceiling. The Azure Pricing
+#   Calculator is a human cross-check only; it is not in the gate.
+#
+# RULES
+#   * `quantity` is expressed in the meter's BASE unit (individual calls, individual
+#     tokens, seconds — not blocks of 10K or millions), already net of any
+#     documented free grant. The arithmetic is shown in `notes`.
+#   * A meter spec that matches more than one meter is a hard failure, not a
+#     silent pick. Narrow it with `skuName` / `meterName`.
+#   * A component that is billable but has no published meter must declare
+#     `pricing_status: unpublished` and reserve budget. Assuming zero is banned.
+#   * Non-Azure spend uses `billing: external`. It is reported separately and does
+#     not consume the Azure ceiling, because it is not metered by Azure.
+
+version: 1
+currency: USD
+monthly_budget_usd: 500
+hours_per_month: 730
+
+modules:
+  core:
+    enabled_by_default: true
+    description: Core platform and specialist workload.
+  approvals:
+    enabled_by_default: false
+    description: Optional Logic Apps Approvals platform coverage.
+  sre:
+    enabled_by_default: false
+    description: Optional Azure SRE Agent platform coverage.
+
+line_items:
+  - id: travel-gpt-5-4-mini-input
+    component: Foundry Models gpt-5.4-mini Global input tokens
+    billing: azure
+    quantity: 6000000
+    unit: tokens
+    expect_unit_of_measure: 1M
+    meter:
+      serviceName: Foundry Models
+      meterNameContains: 5.4 mini Inp Gl
+    source: https://azure.microsoft.com/pricing/details/ai-foundry-models/
+    notes: 720 Travel conversations/month at no more than two per hour, reserving 6 million input tokens.
+
+  - id: travel-gpt-5-4-mini-output
+    component: Foundry Models gpt-5.4-mini Global output tokens
+    billing: azure
+    quantity: 1500000
+    unit: tokens
+    expect_unit_of_measure: 1M
+    meter:
+      serviceName: Foundry Models
+      meterNameContains: 5.4 mini Opt Gl
+    source: https://azure.microsoft.com/pricing/details/ai-foundry-models/
+    notes: 1.5 million output tokens/month for Travel's weighted share of synthetic traffic.
+
+  - id: apim-basic-v2-unit
+    component: API Management Basic v2 (1 unit)
+    billing: azure
+    quantity: 730
+    unit: hours
+    expect_unit_of_measure: 1 Hour
+    meter:
+      serviceName: API Management
+      skuName: Basic v2
+      meterName: Basic v2 Unit
+    source: https://learn.microsoft.com/azure/api-management/v2-service-tiers-overview
+    notes: >-
+      One Basic v2 unit running continuously for a 730-hour month. Basic v2 is the
+      cheapest v2 tier that carries an SLA. This is the largest fixed cost in v1.
+
+  - id: apim-basic-v2-calls
+    component: API Management Basic v2 calls
+    billing: azure
+    quantity: 2000000
+    unit: calls
+    expect_unit_of_measure: 10K
+    meter:
+      serviceName: API Management
+      skuName: Basic v2
+      meterName: Basic v2 Calls
+    source: https://learn.microsoft.com/azure/api-management/v2-service-tiers-overview
+    notes: >-
+      2 million gateway calls/month. The meter is tiered: the first 10 million
+      calls carry a zero unit price and calls beyond that are charged per 10K
+      block, which the graduated tier maths applies automatically. Demo traffic
+      sits inside the zero band, so this line is expected to be $0 — the tier is
+      still priced live rather than assumed.
+
+  - id: foundry-gpt5-input
+    module: approvals
+    component: Logic Apps model inference — Foundry gpt-5 input (Global Standard)
+    billing: azure
+    quantity: 20000000
+    unit: tokens
+    expect_unit_of_measure: 1M
+    meter:
+      serviceName: Foundry Models
+      skuName: GPT 5 Inpt Glbl
+      meterName: GPT 5 Inpt Glbl 1M Tokens
+    source: https://learn.microsoft.com/azure/ai-foundry/openai/how-to/deployment-types
+    notes: >-
+      The model deployment that the Logic Apps agent loop calls. This is a
+      SEPARATE charge from the agent-loop token meters below: those price the
+      orchestration runtime, while this prices the inference the deployment
+      serves. 20 million input tokens/month is roughly 6,000 model turns at a
+      3K-token working context. Global Standard is the deployment type the region
+      gate requires. Cached-input and Batch discounts are deliberately NOT
+      assumed, so this line is an upper bound.
+
+  - id: foundry-gpt5-output
+    module: approvals
+    component: Logic Apps model inference — Foundry gpt-5 output (Global Standard)
+    billing: azure
+    quantity: 2500000
+    unit: tokens
+    expect_unit_of_measure: 1M
+    meter:
+      serviceName: Foundry Models
+      skuName: GPT 5 outpt Glbl
+      meterName: GPT 5 outpt Glbl 1M Tokens
+    source: https://learn.microsoft.com/azure/ai-foundry/openai/how-to/deployment-types
+    notes: >-
+      2.5 million output tokens/month. Output is 8x the input unit price, so this
+      is the line most sensitive to agents that answer at length; it is the first
+      number to revisit if the estimate drifts.
+
+  - id: platform-acr-basic
+    component: Shared platform Container Registry Basic
+    billing: azure
+    quantity: 30
+    unit: days
+    expect_unit_of_measure: 1/Day
+    meter:
+      serviceName: Container Registry
+      skuName: Basic
+      meterName: Basic Registry Unit
+    source: https://azure.microsoft.com/pricing/details/container-registry/
+    notes: >-
+      One project-owned Basic registry for the shared estate/platform layer,
+      billed continuously for a 30-day month. This fixed cost is owned once by
+      the gateway/platform estimate rather than duplicated by consuming agents.
+
+  - id: aca-vcpu
+    component: Container Apps vCPU (active)
+    billing: azure
+    quantity: 1134000
+    unit: vCPU-seconds
+    expect_unit_of_measure: 1 Second
+    meter:
+      serviceName: Azure Container Apps
+      skuName: Standard
+      meterName: Standard vCPU Active Usage
+    source: https://azure.microsoft.com/pricing/details/container-apps/
+    notes: >-
+      0.5 vCPU x 730 h = 1,314,000 vCPU-seconds, minus the documented 180,000
+      vCPU-second monthly free grant = 1,134,000 billable.
+
+  - id: aca-memory
+    component: Container Apps memory (active)
+    billing: azure
+    quantity: 2268000
+    unit: GiB-seconds
+    expect_unit_of_measure: 1 GiB Second
+    meter:
+      serviceName: Azure Container Apps
+      skuName: Standard
+      meterName: Standard Memory Active Usage
+    source: https://azure.microsoft.com/pricing/details/container-apps/
+    notes: >-
+      1 GiB x 730 h = 2,628,000 GiB-seconds, minus the documented 360,000
+      GiB-second monthly free grant = 2,268,000 billable.
+
+  - id: aca-requests
+    component: Container Apps requests
+    billing: azure
+    quantity: 3000000
+    unit: requests
+    expect_unit_of_measure: 1M
+    meter:
+      serviceName: Azure Container Apps
+      skuName: Standard
+      meterName: Standard Requests
+    source: https://azure.microsoft.com/pricing/details/container-apps/
+    notes: 5 million requests/month minus the documented 2 million free grant = 3 million billable.
+
+  - id: field-model-input
+    component: Contoso Field GPT-4.1 mini input
+    billing: azure
+    quantity: 1000000
+    unit: tokens
+    expect_unit_of_measure: 1K
+    meter:
+      serviceName: Foundry Models
+      skuName: 4.1 mini pp Inp Gl
+      meterName: 4.1 mini pp Inp Gl Tokens
+    source: https://azure.microsoft.com/pricing/details/ai-foundry/
+    notes: >-
+      1 million input tokens/month for the scale-to-zero field agent. Field takes
+      a sparse heartbeat share of the estate-wide cap of at most 4 conversations
+      per hour. Container Apps consumption stays in the shared ACA aggregate lines
+      above rather than being counted again here.
+
+  - id: field-model-output
+    component: Contoso Field GPT-4.1 mini output
+    billing: azure
+    quantity: 200000
+    unit: tokens
+    expect_unit_of_measure: 1K
+    meter:
+      serviceName: Foundry Models
+      skuName: gpt 4.1 mini Outp glbl
+      meterName: gpt 4.1 mini Outp glbl Tokens
+    source: https://azure.microsoft.com/pricing/details/ai-foundry/
+    notes: >-
+      200,000 output tokens/month for Field's sparse share of the estate-wide
+      conversation cap. The output allowance is priced separately because the
+      Retail Prices API publishes a distinct Global Standard meter.
+
+  - id: logic-apps-agent-input
+    module: approvals
+    component: Logic Apps agent loop — input tokens
+    billing: azure
+    quantity: 10000000
+    unit: tokens
+    expect_unit_of_measure: 1M
+    meter:
+      serviceName: Logic Apps
+      skuName: Consumption
+      meterName: Consumption Agent Loop Input Token
+    source: https://learn.microsoft.com/azure/logic-apps/agent-workflows-concepts
+    notes: >-
+      PUBLIC PREVIEW feature. 10 million input tokens/month across autonomous
+      workflow runs — roughly 3,000 agent turns at a 3K-token working context.
+
+  - id: logic-apps-agent-output
+    module: approvals
+    component: Logic Apps agent loop — output tokens
+    billing: azure
+    quantity: 2000000
+    unit: tokens
+    expect_unit_of_measure: 1M
+    meter:
+      serviceName: Logic Apps
+      skuName: Consumption
+      meterName: Consumption Agent Loop Output Token
+    source: https://learn.microsoft.com/azure/logic-apps/agent-workflows-concepts
+    notes: >-
+      PUBLIC PREVIEW feature. 2 million output tokens/month. Output tokens are
+      roughly 8x the price of input tokens, so this is the line most sensitive to
+      chattier agents.
+
+  - id: logic-apps-connector-actions
+    module: approvals
+    component: Logic Apps standard connector actions
+    billing: azure
+    quantity: 100000
+    unit: actions
+    expect_unit_of_measure: "1"
+    meter:
+      serviceName: Logic Apps
+      skuName: Consumption
+      meterName: Consumption Standard Connector Actions
+    source: https://azure.microsoft.com/pricing/details/logic-apps/
+    notes: 100,000 connector actions/month driven by the agent loops.
+
+  - id: log-analytics-ingestion
+    component: Log Analytics / Application Insights ingestion
+    billing: azure
+    quantity: 30
+    unit: GB
+    expect_unit_of_measure: 1 GB
+    meter:
+      serviceName: Log Analytics
+      skuName: Analytics Logs
+      meterName: Analytics Logs Data Ingestion
+    source: https://learn.microsoft.com/azure/azure-monitor/logs/cost-logs
+    notes: >-
+      30 GB/month of workspace-based Application Insights telemetry. The meter is
+      tiered and the included free allocation is priced at zero, which the
+      graduated tier maths applies automatically.
+
+  - id: support-model-input
+    component: Contoso Support gpt-5.4-mini input
+    billing: azure
+    quantity: 1500000
+    unit: tokens
+    expect_unit_of_measure: 1M
+    meter:
+      serviceName: Foundry Models
+      productName: Azure OpenAI GPT5
+      skuName: 5.4 mini pp Inp Gl
+      meterName: 5.4 mini pp Inp Gl 1M Tokens
+    source: https://azure.microsoft.com/pricing/details/cognitive-services/openai-service/
+    notes: >-
+      The support share of the estate-wide pilot is 1.5 million uncached Global
+      Standard input tokens, roughly 500 turns at a 3K-token working context.
+
+  - id: support-model-output
+    component: Contoso Support gpt-5.4-mini output
+    billing: azure
+    quantity: 300000
+    unit: tokens
+    expect_unit_of_measure: 1M
+    meter:
+      serviceName: Foundry Models
+      productName: Azure OpenAI GPT5
+      skuName: 5.4 mini Opt Gl
+      meterName: 5.4 mini Opt Gl 1M Tokens
+    source: https://azure.microsoft.com/pricing/details/cognitive-services/openai-service/
+    notes: The support share is 300,000 Global Standard output tokens for the same pilot load.
+
+  - id: support-hosted-agent-compute
+    component: Contoso Support hosted-agent compute
+    billing: azure
+    pricing_status: unpublished
+    budget_reserve_usd: 40
+    quantity: 1
+    unit: agent-month
+    source: https://learn.microsoft.com/azure/foundry/agents/how-to/deploy-hosted-agent
+    notes: >-
+      Hosted-agent CPU and memory have no unambiguous Retail Prices API meter.
+      The scale-to-zero pilot holds 40 USD/month rather than claiming zero and must replace the
+      reserve when Microsoft publishes a meter.
+
+  - id: contoso-research-input
+    component: Contoso Research gpt-5.4-mini input tokens
+    billing: azure
+    quantity: 3000000
+    unit: tokens
+    expect_unit_of_measure: 1M
+    meter:
+      serviceName: Foundry Models
+      skuName: 5.4 mini Inp Gl
+      meterName: 5.4 mini Inp Gl 1M Tokens
+    source: https://azure.microsoft.com/pricing/details/foundry-models/
+    notes: >-
+      3 million uncached input tokens/month is Research's allocation within the
+      estate-wide allowance for at most four conversations/hour. It is not an
+      additional standalone allowance. The exact Global Standard gpt-5.4-mini
+      2026-03-17 deployment is declared in azure.yaml.
+
+  - id: contoso-research-output
+    component: Contoso Research gpt-5.4-mini output tokens
+    billing: azure
+    quantity: 600000
+    unit: tokens
+    expect_unit_of_measure: 1M
+    meter:
+      serviceName: Foundry Models
+      skuName: 5.4 mini Opt Gl
+      meterName: 5.4 mini Opt Gl 1M Tokens
+    source: https://azure.microsoft.com/pricing/details/foundry-models/
+    notes: >-
+      0.6 million output tokens/month is Research's allocation within the
+      estate-wide allowance for at most four conversations/hour, not additional
+      standalone capacity. The exact Global Standard gpt-5.4-mini 2026-03-17
+      deployment is declared in azure.yaml.
+
+  - id: contoso-research-hosted-compute
+    component: Contoso Research hosted-agent compute
+    billing: azure
+    pricing_status: unpublished
+    budget_reserve_usd: 30
+    quantity: 100
+    unit: active-session-hours
+    source: https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agents#pricing
+    notes: >-
+      PUBLIC PREVIEW. The agent is sized at 0.5 vCPU and 1 GiB with an assumed
+      100 active session-hours/month. Microsoft documents CPU-plus-memory
+      consumption billing, but the Retail Prices API does not expose a unique
+      hosted-agent compute meter, so the gate reserves 30 USD instead of zero.
+
+  - id: sre-agent
+    module: sre
+    component: Azure SRE Agent
+    billing: azure
+    pricing_status: unpublished
+    budget_reserve_usd: 60
+    quantity: 730
+    unit: agent-hours
+    source: https://learn.microsoft.com/azure/sre-agent/pricing-billing
+    notes: >-
+      Billed in Azure Agent Units — 4 AAUs per agent-hour for the always-on flow
+      plus per-token AAUs for active flows. Microsoft publishes the AAU rates but
+      not a USD-per-AAU conversion, and the Retail Prices API returns no SRE Agent
+      meter, so this cannot be priced programmatically today. Rather than record
+      it as zero, the optional estimate reserves 60 USD/month. Replace the
+      reserve with a real meter as soon as one is published.
+
+  - id: copilot-studio-credits
+    component: Copilot Studio Copilot Credits
+    billing: external
+    quantity: 25000
+    unit: credits/month
+    list_price_usd: 0.01
+    price_as_of: 2026-08-24
+    sku: Copilot Credits (pay-as-you-go)
+    source: https://learn.microsoft.com/microsoft-copilot-studio/requirements-messages-management
+    notes: >-
+      NOT Azure spend and NOT counted against the configured Azure ceiling. Copilot
+      Studio bills in Copilot Credits — 2 credits per generative answer, 5 per
+      agent action, 10 per tenant graph grounding call. Microsoft does not publish
+      a USD-per-credit rate on Learn (it is in the licensing guide PDF), so the
+      0.01 USD figure here is a PLANNING PLACEHOLDER that must be confirmed against
+      a real invoice or the licensing guide before anyone relies on it. Capacity
+      must be verified in the Power Platform admin centre before tenant-wide
+      publication. See docs/platform/costs.md.

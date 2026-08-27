@@ -1,0 +1,2 @@
+{"arguments":{},"expect_error":"UnknownPrincipalError","id":"unknown-principal","principal_oid":"OID-NOT-PROVISIONED-01","tenant_key":"TID-CONTOSO-01","tool":"hr_search_roster"}
+{"arguments":{"scope":"APAC"},"expect_error":"ToolError","id":"scope-injection","principal_oid":"OID-EMEA-HRBP-01","tenant_key":"TID-CONTOSO-01","tool":"hr_search_roster"}
