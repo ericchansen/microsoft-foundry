@@ -1,0 +1,238 @@
+name: travel agent
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    paths:
+      - "agents/travel/**"
+      - "config/**"
+      - "data/**"
+      - "infra/**"
+      - "src/**"
+      - "tests/test_travel_*.py"
+      - ".dockerignore"
+      - ".github/workflows/travel.yml"
+      - "pyproject.toml"
+      - "README.md"
+  schedule:
+    - cron: "43 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Deploy and evaluate the exact Travel candidate
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install exact dependencies
+        run: |
+          pip install -e ".[dev]"
+          pip install -r agents/travel/requirements.txt
+
+      - name: Lint and test Travel
+        run: |
+          ruff check agents/travel tests/test_travel_*.py
+          pytest -q tests/test_travel_*.py tests/test_infrastructure.py tests/test_costs.py
+
+      - name: Build Bicep
+        run: |
+          az bicep install
+          az bicep build --file infra/main.bicep --stdout >/dev/null
+          az bicep build --file infra/travel.bicep --stdout >/dev/null
+
+      # Built directly into the local daemon, like the other agent images, so the
+      # security gates below scan the exact filesystem this Dockerfile produces.
+      - name: Build image for security gates
+        run: |
+          docker build \
+            --platform linux/amd64 \
+            --file agents/travel/Dockerfile \
+            --tag contoso-travel:ci \
+            .
+
+      # Trivy is pinned to a release that applies layer whiteouts to SBOM-derived
+      # packages. Older releases keep reporting the CycloneDX document vendored
+      # inside pip after the Dockerfile deletes pip, which is a finding about a
+      # file that is not in the shipped image.
+      - name: Vulnerability scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: contoso-travel:ci
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+
+      - name: Generate image SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: contoso-travel:ci
+          artifact-name: contoso-travel.spdx.json
+          output-file: /tmp/contoso-travel.spdx.json
+
+  deploy:
+    if: github.event_name == 'workflow_dispatch' && inputs.deploy
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: contoso-agents
+    concurrency:
+      group: azure-rg-contoso-agents
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    env:
+      RESOURCE_GROUP: rg-contoso-agents
+      OTEL_SERVICE_NAME: contoso-travel
+      FOUNDRY_PROJECT_ENDPOINT: ${{ vars.FOUNDRY_TRAVEL_PROJECT_ENDPOINT }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install exact dependencies
+        run: |
+          pip install -e ".[dev]"
+          pip install -r agents/travel/requirements.txt
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Require owned boundary
+        run: |
+          test "$(az group show --name "$RESOURCE_GROUP" --query tags.boundary -o tsv)" = "$RESOURCE_GROUP"
+          optional_args=()
+          if az resource show \
+            --resource-group "$RESOURCE_GROUP" \
+            --resource-type Microsoft.App/agents \
+            --name contoso-agents-sre-control-plane \
+            --api-version 2026-01-01 >/dev/null 2>&1 ||
+            az resource show \
+              --resource-group "$RESOURCE_GROUP" \
+              --resource-type Microsoft.Logic/workflows \
+              --name contoso-agents-approvals-loop \
+              --api-version 2019-05-01 >/dev/null 2>&1; then
+            optional_args+=(--enable-module optional-control-plane)
+          fi
+          foundry boundary "${optional_args[@]}"
+
+      - name: Refuse concurrent resource-group deployments
+        run: |
+          active="$(az deployment group list \
+            --resource-group "$RESOURCE_GROUP" \
+            --query "[?properties.provisioningState=='Running' || properties.provisioningState=='Accepted'].name" \
+            --output tsv)"
+          test -z "$active"
+
+      - name: Deploy pinned model and RAI policy
+        run: |
+          az deployment group create \
+            --name "travel-model-${GITHUB_RUN_ID}" \
+            --resource-group "$RESOURCE_GROUP" \
+            --template-file infra/modules/model-deployment.bicep \
+            --parameters accountName=contoso-agents-foundry
+
+      - name: Create, smoke, and evaluate exact candidate
+        env:
+          PYTHONPATH: src:agents/travel/src
+        run: |
+          python -m contoso_travel_agent.operations deploy
+          python -m contoso_travel_agent.operations smoke
+          python -m contoso_travel_agent.operations evaluate
+
+      - name: Resolve candidate version
+        id: candidate
+        shell: bash
+        run: |
+          echo "version=$(python -c 'import json; print(json.load(open("internal/travel/agent-version.json"))["created_version"])')" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve project registry
+        id: acr
+        shell: bash
+        run: |
+          name="$(az acr list --resource-group "$RESOURCE_GROUP" --query '[0].name' -o tsv)"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "server=$(az acr show --name "$name" --query loginServer -o tsv)" >> "$GITHUB_OUTPUT"
+
+      - name: Authenticate Docker to the owned registry
+        run: az acr login --name "${{ steps.acr.outputs.name }}"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Push image with SBOM and provenance
+        id: image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: agents/travel/Dockerfile
+          push: true
+          tags: ${{ steps.acr.outputs.server }}/contoso-travel:${{ github.sha }}
+          provenance: mode=max
+          sbom: true
+
+      - name: Deploy disabled-by-default job with exact candidate
+        shell: bash
+        run: |
+          digest="${{ steps.image.outputs.digest }}"
+          az deployment group create \
+            --name "travel-job-${GITHUB_RUN_ID}" \
+            --resource-group "$RESOURCE_GROUP" \
+            --template-file infra/travel.bicep \
+            --parameters \
+              imageRepository="${{ steps.acr.outputs.server }}/contoso-travel" \
+              imageDigest="${digest#sha256:}" \
+              agentVersion="${{ steps.candidate.outputs.version }}" \
+              location="$(python -c 'import yaml; print(yaml.safe_load(open("config/selected-region.yaml"))["region"])')"
+
+      - name: Create and scan sanitized candidate evidence
+        env:
+          AGENT_VERSION: ${{ steps.candidate.outputs.version }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          mkdir -p reports
+          jq -n \
+            --arg agent_name contoso-travel \
+            --arg agent_version "$AGENT_VERSION" \
+            --arg image_digest "$IMAGE_DIGEST" \
+            '{
+              agent_name: $agent_name,
+              agent_version: $agent_version,
+              image_digest: $image_digest,
+              status: "passed",
+              synthetic: true
+            }' > reports/travel-candidate.json
+          foundry scan reports/travel-candidate.json
+
+      - name: Retain sanitized candidate evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: travel-candidate-${{ github.run_id }}
+          path: reports/travel-candidate.json
+          if-no-files-found: error
+          retention-days: 30
+
+      # There is intentionally no tenant-wide publication step in this workflow.
