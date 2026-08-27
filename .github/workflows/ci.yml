@@ -1,0 +1,255 @@
+name: ci
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  # Prices move independently of commits, so the cost gate also runs on a timer.
+  # The claim below is enforced by this trigger, not by good intentions.
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.13"
+  PYTHONPATH: src
+
+jobs:
+  # Everything that needs no network beyond PyPI. Fast, and the signal most PRs need.
+  static:
+    name: lint and unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[dev,docs,research,field]"
+
+      - name: Ruff
+        run: ruff check .
+
+      - name: Unit tests
+        run: pytest -q
+
+      - name: Research golden evaluations
+        run: python -m contoso_foundry.research.evaluate
+
+      # Static half of the ownership boundary: proves the *plan* never names a
+      # scope outside rg-contoso-agents. --no-live skips the Azure lookups, which
+      # need credentials CI does not have.
+      - name: Ownership boundary (plan)
+        run: foundry boundary --no-live
+
+      - name: Control Plane platform declarations
+        run: foundry platform-inventory --no-live
+
+  support:
+    name: hosted agent contracts and readiness
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - uses: Azure/setup-azd@v2
+
+      - name: Install required Foundry providers
+        run: |
+          azd extension install azure.ai.agents --source azd
+          azd extension install azure.ai.projects --source azd
+
+      - name: Install hosted runtime and project
+        run: |
+          pip install -e ".[dev]"
+          pip install -r agents/contoso-support/requirements.txt
+
+      - name: Validate unified Foundry configuration and providers
+        run: |
+          azd env new support-agent-doctor --no-prompt
+          azd env set AZD_AGENT_SKIP_ACR true
+          azd env set AZURE_AI_PROJECT_ENDPOINT https://unit.test/api/projects/support
+          azd env set FOUNDRY_PROJECT_ENDPOINT https://unit.test/api/projects/support
+          azd env set CONTOSO_RESEARCH_PROJECT_ENDPOINT https://unit.test/api/projects/research
+          azd env set CONTOSO_RESEARCH_USER_ROUTE_ALLOWLIST \
+            '{"ci-synthetic-user":"americas-supply-planner"}'
+          azd env set CONTOSO_SUPPORT_IMAGE \
+            registry.invalid/contoso-support@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          azd env set MICROSOFT_FOUNDRY_MODEL_DEPLOYMENT_NAME support-gpt-5-4-mini
+          azd ai agent doctor --local-only
+
+      - name: Deterministic scoped evaluation
+        run: |
+          foundry data verify --out data/build
+          foundry toolbox validate
+          foundry support evaluate
+
+      - name: Import current Agent Framework runtime
+        run: python -c "from contoso_foundry.support_agent.runtime import build_workflow_agent"
+
+      - name: Build linux/amd64 hosted image
+        run: docker build --platform linux/amd64 --tag contoso-support:ci .
+
+      - name: Scan hosted image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: contoso-support:ci
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+
+      - name: Verify protocol readiness endpoint
+        run: |
+          container_id="$(docker run --detach --platform linux/amd64 --publish 8088:8088 \
+            --env FOUNDRY_PROJECT_ENDPOINT=https://unit.test/api/projects/support \
+            --env FOUNDRY_AGENT_NAME=contoso-support \
+            --env FOUNDRY_AGENT_VERSION=ci \
+            --env FOUNDRY_AGENT_SESSION_ID=ci \
+            --env MICROSOFT_FOUNDRY_MODEL_DEPLOYMENT_NAME=support-gpt-5-4-mini \
+            --env CONTOSO_TENANT_KEY=TID-CONTOSO-01 \
+            --env CONTOSO_SUPPORT_PRINCIPAL_OID=OID-AMER-SUPLEAD-01 \
+            contoso-support:ci)"
+          trap 'docker rm --force "$container_id" >/dev/null' EXIT
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8088/readiness >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs "$container_id"
+          exit 1
+
+  research-container:
+    name: research container build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build hosted-agent image
+        run: docker build --file agents/research/Dockerfile --tag contoso-research:ci .
+
+      - name: Scan hosted-agent image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: contoso-research:ci
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+
+      - name: Verify hosted-agent readiness endpoint
+        run: |
+          container_id="$(docker run --detach --publish 8089:8088 \
+            --env FOUNDRY_AGENT_NAME=contoso-research \
+            --env FOUNDRY_AGENT_VERSION=1 \
+            --env FOUNDRY_PROJECT_ENDPOINT=https://unit.test/api/projects/research \
+            --env AZURE_AI_MODEL_DEPLOYMENT_NAME=gpt-5.4-mini-2026-03-17 \
+            --env CONTOSO_RESEARCH_HOSTED_VERSION=1 \
+            --env CONTOSO_RESEARCH_VERSION=1.0.0 \
+            --env CONTOSO_RESEARCH_USER_ROUTE_ALLOWLIST='{"ci-synthetic-user":"americas-supply-planner"}' \
+            --env OTEL_SERVICE_NAME=contoso-research \
+            contoso-research:ci)"
+          trap 'docker rm --force "$container_id" >/dev/null' EXIT
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8089/readiness >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs "$container_id"
+          exit 1
+
+  field-container:
+    name: field container build and scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build external-agent image
+        run: docker build --file agents/field/Dockerfile --tag contoso-field:ci .
+
+      - name: Scan external-agent image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: contoso-field:ci
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+
+  # The published site is the thing a stranger sees, so its gates run on their own.
+  site:
+    name: docs build and public-content scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[dev,docs]"
+
+      # --strict turns broken internal links and unknown config into failures.
+      - name: Build site
+        run: mkdocs build --strict
+
+      # Gate 1 and gate 6: no tenant identifiers in the generated HTML, and
+      # internal/ never reaches the build output.
+      - name: Scan generated site
+        run: foundry scan site
+
+      - name: Lint Markdown
+        run: pymarkdown --config .pymarkdown.json scan docs README.md AGENTS.md
+
+  # Prices move, so this is scheduled as well as PR-triggered: a meter change
+  # should fail on a boring Monday, not the day someone needs to provision.
+  cost:
+    name: cost model under budget
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install
+        run: pip install -e "."
+
+      # Gate 2: prices live against the Retail Prices API and exits non-zero
+      # above the ceiling declared in costs/v1-estimate.yaml. Unauthenticated.
+      - name: Price the v1 estimate
+        run: foundry costs --report reports/cost-report.md
+
+      - name: Upload cost report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cost-report
+          path: reports/cost-report.md
+          if-no-files-found: warn
