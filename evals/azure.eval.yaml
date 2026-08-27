@@ -1,0 +1,12 @@
+evals:
+  - name: contoso-travel-trace-discovery
+    description: Discovery-only quality signals from synthetic Travel traces
+    source:
+      type: traces
+      max_traces: 20
+      agent_name: contoso-travel
+    evaluation_level: turn
+    evaluators:
+      - evaluator: builtin.task_adherence
+        initialization_parameters:
+          model: travel-gpt-5-4-mini

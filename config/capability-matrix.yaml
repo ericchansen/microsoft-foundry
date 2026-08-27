@@ -1,0 +1,241 @@
+# Capability matrix — capabilities Microsoft publishes only as documentation tables.
+#
+# WHY THIS FILE EXISTS
+# --------------------
+# `foundry regions` prefers live evidence: ARM tells us which regions exist, which
+# resource types can be created, which models are deployable and how much quota we
+# have. Some capabilities have no such API. For those, and only those, we record the
+# published region list here.
+#
+# RULES FOR EVERY ENTRY
+#   * `source` must be a first-party Microsoft URL.
+#   * `as_of` is the date a human last checked that URL.
+#   * `regions` uses the Azure *display* names exactly as the source page prints them.
+#     They are normalised (lowercase, punctuation stripped) before matching, so
+#     "East US 2" and "eastus2" both resolve.
+#
+# If a capability later gains an API, delete its entry here and add a live gate.
+
+version: 1
+review_cadence_days: 90
+
+capabilities:
+  apim_basic_v2:
+    label: API Management Basic v2 tier
+    source: https://learn.microsoft.com/azure/api-management/api-management-region-availability
+    as_of: 2026-08-24
+    note: >-
+      Basic v2 is the cheapest v2 tier with an SLA. The v2 tiers are available in a
+      narrower set of regions than API Management itself, so ARM's resource-type
+      locations for Microsoft.ApiManagement/service are not a sufficient test.
+    regions:
+      - Australia Central
+      - Australia East
+      - Australia Southeast
+      - Brazil South
+      - Canada Central
+      - Canada East
+      - Central India
+      - Central US
+      - East Asia
+      - East US
+      - East US 2
+      - France Central
+      - Germany West Central
+      - Italy North
+      - Japan East
+      - Korea Central
+      - North Central US
+      - North Europe
+      - Norway East
+      - South Africa North
+      - South Central US
+      - South India
+      - Southeast Asia
+      - Spain Central
+      - Sweden Central
+      - Switzerland North
+      - UAE North
+      - UK West
+      - West Europe
+      - West US
+      - West US 2
+    excluded_regions:
+      # Listed on the source page as Standard v2 only.
+      - Malaysia West
+      - New Zealand North
+      - West US 3
+      # Listed as temporarily unavailable for new instance creation. A region we
+      # cannot provision into today is not a candidate today.
+      - UK South
+
+  azure_sre_agent:
+    label: Azure SRE Agent
+    source: https://learn.microsoft.com/azure/sre-agent/supported-regions
+    as_of: 2026-08-24
+    note: >-
+      Billed in Azure Agent Units. The service has no entry in the Azure Retail
+      Prices API, which is why the cost model holds an explicit budget reserve for
+      it rather than assuming it is free.
+    regions:
+      - Australia East
+      - Canada Central
+      - Central US
+      - East Asia
+      - East US 2
+      - France Central
+      - Italy North
+      - Japan East
+      - Korea Central
+      - North Central US
+      - South Africa North
+      - Southeast Asia
+      - Spain Central
+      - Sweden Central
+      - UK South
+      - West Central US
+      - West US 2
+      - West US 3
+
+  foundry_agent_service:
+    label: Microsoft Foundry Agent Service
+    source: https://learn.microsoft.com/azure/foundry/agents/concepts/limits-quotas-regions
+    as_of: 2026-08-24
+    note: >-
+      Generally available. Tool availability varies within this list; v1 uses only
+      tools available in every listed region.
+    regions:
+      - Australia East
+      - Brazil South
+      - Canada Central
+      - Canada East
+      - Central US
+      - East US
+      - East US 2
+      - France Central
+      - Germany West Central
+      - Italy North
+      - Japan East
+      - Japan West
+      - Korea Central
+      - North Central US
+      - Norway East
+      - Poland Central
+      - South Africa North
+      - South Central US
+      - Southeast Asia
+      - South India
+      - Spain Central
+      - Sweden Central
+      - Switzerland North
+      - Switzerland West
+      - UAE North
+      - UK South
+      - West Central US
+      - West Europe
+      - West US
+      - West US 3
+
+  foundry_project:
+    label: Microsoft Foundry project creation
+    source: https://learn.microsoft.com/azure/foundry/reference/region-support
+    as_of: 2026-08-24
+    regions:
+      - Australia East
+      - Brazil South
+      - Canada Central
+      - Canada East
+      - Central India
+      - Central US
+      - East Asia
+      - East US
+      - East US 2
+      - France Central
+      - Germany West Central
+      - Italy North
+      - Japan East
+      - Korea Central
+      - North Central US
+      - North Europe
+      - Norway East
+      - Qatar Central
+      - South Africa North
+      - South Central US
+      - South India
+      - Southeast Asia
+      - Spain Central
+      - Sweden Central
+      - Switzerland North
+      - UAE North
+      - UK South
+      - West Europe
+      - West US
+      - West US 3
+
+  logic_apps_agent_loop:
+    label: Logic Apps agent loop (agentic workflows)
+    source: https://learn.microsoft.com/azure/logic-apps/agent-workflows-concepts
+    as_of: 2026-08-24
+    status: public-preview
+    note: >-
+      PUBLIC PREVIEW. Microsoft does not publish a region table for agentic
+      workflows. The documentation states the agent's model is provisioned from
+      Azure OpenAI, so support follows Foundry availability. We therefore derive
+      this capability from `foundry_project` rather than inventing a list. The
+      billing meters ("Consumption Agent Loop Input Token" / "Output Token") do
+      exist in the Retail Prices API and are priced in the cost model.
+    derives_from: foundry_project
+
+  power_platform_co_residency:
+    label: Power Platform / Copilot Studio co-residency
+    sources:
+      - https://learn.microsoft.com/power-platform/admin/regions-overview
+      - https://learn.microsoft.com/microsoft-copilot-studio/data-location
+    source: https://learn.microsoft.com/microsoft-copilot-studio/data-location
+    as_of: 2026-08-24
+    note: >-
+      Copilot Studio stores data in the Azure geography matching the Power Platform
+      environment. This gate keeps the Azure workload in a geography where a Power
+      Platform environment can be co-located, so the two halves of the platform do
+      not straddle a data boundary. India and Australia are excluded because
+      Power Platform restricts those regions to India- and Australia-based tenants.
+    regions:
+      - Canada Central
+      - Canada East
+      - Central US
+      - East US
+      - East US 2
+      - North Central US
+      - South Central US
+      - West Central US
+      - West US
+      - West US 2
+      - West US 3
+      - France Central
+      - Germany North
+      - Germany West Central
+      - Japan East
+      - Japan West
+      - Korea Central
+      - Korea South
+      - North Europe
+      - Norway East
+      - Norway West
+      - South Africa North
+      - South Africa West
+      - Southeast Asia
+      - East Asia
+      - Brazil South
+      - Sweden Central
+      - Switzerland North
+      - Switzerland West
+      - UAE North
+      - UK South
+      - UK West
+      - West Europe
+    excluded_regions:
+      - Central India
+      - South India
+      - Australia Central
+      - Australia East
+      - Australia Southeast

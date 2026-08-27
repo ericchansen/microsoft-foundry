@@ -1,0 +1,100 @@
+"""Deterministic smoke and golden evaluations for the research graph."""
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+
+import yaml
+from langchain_core.messages import HumanMessage
+
+from .request_context import EVALUATION_USER_ROUTES, resolve_trusted_request
+from .runtime import build_runtime
+from .synthesis import deterministic_synthesizer
+from .workflow import AGENT_NAME, AGENT_VERSION, HOSTED_VERSION, PROTOCOL_VERSION, build_research_graph
+
+
+class EvaluationError(RuntimeError):
+    """Raised when a required golden condition fails."""
+
+
+def run_evaluations(repo_root: Path, scenarios_path: Path) -> list[str]:
+    document = yaml.safe_load(scenarios_path.read_text(encoding="utf-8"))
+    expected_route = {
+        "agent_name": AGENT_NAME,
+        "agent_version": AGENT_VERSION,
+        "hosted_version": HOSTED_VERSION,
+        "protocol": "responses",
+        "protocol_version": PROTOCOL_VERSION,
+    }
+    actual_route = {key: str(document.get(key, "")) for key in expected_route}
+    if actual_route != expected_route:
+        raise EvaluationError(
+            f"evaluation routes {actual_route!r}; expected {expected_route!r}"
+        )
+
+    platform_user_id = str(document.get("platform_user_id", ""))
+    configured_route = str(document.get("persona_route", ""))
+    runtime = build_runtime(repo_root, expected_version=AGENT_VERSION)
+    graph = build_research_graph(runtime, deterministic_synthesizer)
+    results: list[str] = []
+    try:
+        for scenario in document.get("scenarios", []):
+            scenario_id = str(scenario["id"])
+            trusted = resolve_trusted_request(
+                SimpleNamespace(
+                    user_id_key=platform_user_id,
+                    call_id=f"evaluation-{scenario_id}",
+                ),
+                EVALUATION_USER_ROUTES,
+            )
+            if trusted.caller_route != configured_route:
+                raise EvaluationError(
+                    f"{scenario_id}: platform identity mapped to {trusted.caller_route!r}, "
+                    f"not configured route {configured_route!r}"
+                )
+            output: dict[str, Any] = graph.invoke(
+                {
+                    "messages": [HumanMessage(content=str(scenario["question"]))],
+                    "caller_route": trusted.caller_route,
+                    "call_id": trusted.call_id,
+                }
+            )
+            actual_tools = [step["tool"] for step in output["plan"]]
+            expected_tools = list(scenario["expected_tools"])
+            if actual_tools != expected_tools:
+                raise EvaluationError(
+                    f"{scenario['id']}: expected tools {expected_tools!r}, received {actual_tools!r}"
+                )
+
+            row_counts = [
+                len(item["result"]) if isinstance(item["result"], list) else (0 if item["result"] is None else 1)
+                for item in output["evidence"]
+            ]
+            if row_counts != list(scenario["expected_rows"]):
+                raise EvaluationError(
+                    f"{scenario['id']}: expected row counts {scenario['expected_rows']!r}, received {row_counts!r}"
+                )
+            for text in scenario.get("answer_contains", []):
+                if text not in output["answer"]:
+                    raise EvaluationError(f"{scenario['id']}: answer omitted required text {text!r}")
+            results.append(f"{scenario['id']}: passed")
+    finally:
+        runtime.close()
+    return results
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo-root", type=Path, default=Path.cwd())
+    parser.add_argument("--scenarios", type=Path, default=Path("config/research-evals.yaml"))
+    args = parser.parse_args()
+    for line in run_evaluations(args.repo_root.resolve(), args.scenarios.resolve()):
+        print(line)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

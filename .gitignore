@@ -1,0 +1,56 @@
+# ---------------------------------------------------------------------------
+# Identifier-bearing evidence. NEVER commit.
+# `internal/` holds raw discovery output: subscription IDs, tenant IDs, resource
+# IDs, quota numbers, principal object IDs. It is excluded from git and from the
+# MkDocs build. Only sanitized summaries are published.
+# ---------------------------------------------------------------------------
+internal/*
+!internal/README.md
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+azure.auth.json
+
+# Build output
+site/
+dist/
+build/
+*.egg-info/
+
+# Reports produced by the verification scripts
+reports/
+costs/price-cache.json
+
+# ---------------------------------------------------------------------------
+# Generated data.
+# `data/build/` is rebuilt from `data/seed/` on demand and must never be
+# committed: a committed dataset can only ever be stale, and a stale dataset is
+# worse than none because agents would answer from it confidently.
+# `data/build.lock.json` IS committed — it is a lock file, not output: the
+# assertion CI compares a fresh rebuild against.
+# `data/external/cache/` holds third-party corpora fetched by pinned scripts.
+# Their licences do not permit redistribution, so they stay out of the tree.
+# ---------------------------------------------------------------------------
+data/build/
+data/external/cache/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

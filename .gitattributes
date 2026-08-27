@@ -1,0 +1,9 @@
+/.gitattributes text eol=lf
+/.dockerignore text eol=lf
+/.github/workflows/travel.yml text eol=lf
+/agents/travel/** text eol=lf
+/docs/agents/travel.md text eol=lf
+/evals/** text eol=lf
+/infra/modules/model-deployment.bicep text eol=lf
+/infra/travel.bicep text eol=lf
+/tests/test_travel_*.py text eol=lf

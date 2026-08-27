@@ -1,0 +1,108 @@
+capability: operations
+version: 1.0.0
+title: Field service and work orders
+summary: >-
+  Work orders for sites in the caller's region. A work order inherits its scope
+  from the location it is raised against, which matches how field service is
+  actually organised: an engineer's remit is a geography, not a customer list.
+
+identity:
+  scope_source: server
+  policy_keys: [oid, tid]
+
+tools:
+  - name: operations_lookup_work_order
+    title: Look up a work order
+    summary: Fetch one work order by canonical id, scoped through its location.
+    side_effect: read
+    data_classification: internal
+    required_roles: [ops.read]
+    parameters:
+      type: object
+      additionalProperties: false
+      properties:
+        work_order_id:
+          type: string
+          description: Canonical work order identifier, for example WO-00042.
+          pattern: '^WO-\d{5}$'
+      required: [work_order_id]
+    returns:
+      type: [object, 'null']
+      description: The work order record, or null when not visible.
+    examples:
+      - description: Retrieve one work order.
+        arguments: {work_order_id: WO-00001}
+
+  - name: operations_search_work_orders
+    title: Search work orders
+    summary: >-
+      List work orders at in-scope locations, filtered by state, priority, owner
+      or customer. This is the queue an engineer or dispatcher works from.
+    side_effect: read
+    data_classification: internal
+    required_roles: [ops.read]
+    parameters:
+      type: object
+      additionalProperties: false
+      properties:
+        location_id:
+          type: string
+          description: Canonical location identifier to restrict to one site.
+        assigned_employee_id:
+          type: string
+          description: Canonical employee identifier the work order is assigned to.
+        status:
+          type: string
+          description: Work order status.
+          enum: [raised, scheduled, in_progress, completed, cancelled]
+        priority:
+          type: string
+          description: Work order priority.
+          enum: [routine, elevated, priority]
+        customer_id:
+          type: string
+          description: Canonical customer identifier the work is for.
+        limit:
+          type: integer
+          description: Maximum rows to return, capped server-side.
+          minimum: 1
+          maximum: 200
+      required: []
+    returns:
+      type: array
+      description: Work orders visible to the caller.
+    examples:
+      - description: Priority work still outstanding in my region.
+        arguments: {status: scheduled, priority: priority}
+
+  - name: operations_list_locations
+    title: List locations
+    summary: >-
+      List the sites in the caller's region, so an agent can name the network it
+      is dispatching across without inferring it from work order rows.
+    side_effect: read
+    data_classification: public
+    required_roles: [ops.read]
+    parameters:
+      type: object
+      additionalProperties: false
+      properties:
+        country:
+          type: string
+          description: ISO country name to narrow to.
+        kind:
+          type: string
+          description: Canonical site kind.
+          enum: [headquarters, distribution, office, service_depot, support_centre]
+        limit:
+          type: integer
+          description: Maximum rows to return, capped server-side.
+          minimum: 1
+          maximum: 200
+      required: []
+    returns:
+      type: array
+      description: Locations visible to the caller.
+    examples:
+      - description: Depots in my region.
+        arguments: {kind: service_depot}

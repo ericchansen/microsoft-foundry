@@ -1,0 +1,13 @@
+kind: AdaptiveDialog
+modelDescription: Returns the accepted managed solution version without environment or tenant details.
+beginDialog:
+  kind: OnRecognizedIntent
+  id: main
+  intent:
+    displayName: Version
+    triggerQueries:
+      - /version
+  actions:
+    - kind: SendActivity
+      id: sendAcceptedVersion
+      activity: =Concatenate("Contoso Concierge ", Env.ccs_AcceptedVersion)

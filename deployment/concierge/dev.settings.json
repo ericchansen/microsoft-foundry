@@ -1,0 +1,19 @@
+{
+  "EnvironmentVariables": [
+    {
+      "SchemaName": "ccs_AcceptedVersion",
+      "Value": "1.0.0.0"
+    },
+    {
+      "SchemaName": "ccs_FoundrySpecialistBaseUrl",
+      "Value": "<dev-foundry-specialist-base-url>"
+    }
+  ],
+  "ConnectionReferences": [
+    {
+      "LogicalName": "ccs_FoundrySpecialist",
+      "ConnectionId": "<dev-connection-id>",
+      "ConnectorId": "<foundry-specialist-custom-connector-id>"
+    }
+  ]
+}

@@ -1,0 +1,189 @@
+# Provenance for everything under data/.
+#
+# Machine-readable because a completeness check over prose is guesswork.
+# data/MANIFEST.md is rendered from this file by 'foundry data manifest';
+# edit here, never there.
+#
+# Two lists, and the distinction between them is the whole point:
+#   artifacts  - committed to the repository. Permissive licences only.
+#   external   - fetched by a version-pinned script at evaluation time and
+#                cached outside version control. Restricted, share-alike,
+#                non-commercial and gated corpora live here and nowhere else.
+
+preamble: >-
+  Every file under `data/` is either generated from a checked-in seed by
+  `foundry data build`, or is a curated seed table written for this repository.
+  No third-party dataset is copied into the tree. Where a public sample database
+  informed the shape of a table, it is cited as a modelling reference and the
+  rows remain synthetic.
+
+external_preamble: >-
+  These corpora are useful for evaluating agent behaviour but cannot be
+  redistributed here. Their sources and versions are recorded for operators who
+  are separately authorized to stage them in a gitignored cache. This repository
+  does not download them, and nothing derived from them is committed.
+
+artifacts:
+  - id: spine-schema
+    title: Contoso relational spine schema
+    source_url: https://github.com/microsoft/sql-server-samples/tree/master/samples/databases/wide-world-importers
+    source_label: microsoft/sql-server-samples — WideWorldImporters
+    licence: MIT
+    version: "master@2024-06 (concepts only)"
+    transformation: >-
+      Modelled on the entity relationships of the WideWorldImporters sample
+      (customers, suppliers, stock items, orders, invoices, delivery sites).
+      Table and column names were rewritten, the schema reduced to nineteen
+      tables, and every row is generated. No data, DDL or .bak content copied.
+    destination: src/contoso_foundry/data/model.py
+
+  - id: seed-reference
+    title: Curated reference tables and closed vocabularies
+    source_url: https://github.com/ericchansen/microsoft-foundry
+    source_label: this repository
+    licence: Generated-Synthetic
+    version: "spine v1"
+    transformation: >-
+      Written for this repository. Regions, sites, categories, policies and the
+      given/family name vocabularies the privacy gate checks against.
+    destination: data/seed/reference.yaml
+
+  - id: seed-identities
+    title: Row-level-security persona fixtures
+    source_url: https://learn.microsoft.com/entra/identity-platform/id-token-claims-reference
+    source_label: Microsoft Learn — ID token claims reference
+    licence: Microsoft-Documentation
+    version: "2025-01"
+    transformation: >-
+      Persona keys follow the immutable `oid` and `tid` claim model documented
+      by Microsoft Entra, but use opaque non-GUID values so the public-site
+      scanner cannot mistake a fixture for a real directory object.
+    destination: data/seed/identities.yaml
+
+  - id: fictitious-companies
+    title: Reserved fictitious company names
+    source_url: https://learn.microsoft.com/legal/intellectualproperty/permissions/fictitious-names
+    source_label: Microsoft Learn — fictitious names
+    licence: Microsoft-Documentation
+    version: "2024-11"
+    transformation: >-
+      Supplier and partner names are drawn from Microsoft's reserved list of
+      fictitious companies, so no real trading entity is implied.
+    destination: data/seed/reference.yaml
+
+  - id: reserved-domains
+    title: Reserved second-level domain names
+    source_url: https://www.rfc-editor.org/rfc/rfc2606
+    source_label: RFC 2606
+    licence: IETF-Trust-RFC
+    version: "RFC 2606 (June 1999)"
+    transformation: >-
+      Mailbox addresses use `contoso.com` for in-universe records and
+      `example.com` in fixtures, both reserved for documentation.
+    destination: data/seed/reference.yaml
+
+  - id: fiction-phone-block
+    title: Telephone numbers reserved for fiction
+    source_url: https://www.nanpa.com/pdf/PL_412.pdf
+    source_label: NANPA Planning Letter 412
+    licence: IETF-Trust-RFC
+    version: "PL-412 (2001)"
+    transformation: >-
+      All telephone numbers render as `+1 <area>-555-01xx`, inside the 555-0100
+      to 555-0199 range set aside for use in fiction.
+    destination: data/seed/reference.yaml
+
+  - id: evaluation-fixtures
+    title: Golden evaluation scenarios
+    source_url: https://github.com/ericchansen/microsoft-foundry
+    source_label: this repository
+    licence: Generated-Synthetic
+    version: "spine v1"
+    transformation: >-
+      Hand-written scenarios keyed to canonical identifiers produced by the
+      generator, including the EMEA/APAC scope-isolation pair and the
+      fail-closed negatives.
+    destination: data/fixtures
+
+  - id: external-fetch-manifest
+    title: Pinned external dataset index
+    source_url: https://github.com/ericchansen/microsoft-foundry
+    source_label: this repository
+    licence: Generated-Synthetic
+    version: "spine v1"
+    transformation: >-
+      Declares source and licence metadata for third-party corpora that an
+      authorized operator may stage separately. Carries no third-party content.
+    destination: data/external/manifest.yaml
+
+  - id: build-lock
+    title: Dataset build lock
+    source_url: https://github.com/ericchansen/microsoft-foundry
+    source_label: this repository
+    licence: Generated-Synthetic
+    version: "build format 1"
+    transformation: >-
+      SHA-256 per exported artifact plus a digest of the SQLite dump. Committed
+      as an assertion about what the generator must produce, in the same
+      category as a dependency lock file.
+    destination: data/build.lock.json
+
+  - id: manifest
+    title: This manifest and its rendered companion
+    source_url: https://github.com/ericchansen/microsoft-foundry
+    source_label: this repository
+    licence: Generated-Synthetic
+    version: "spine v1"
+    transformation: Authored here; MANIFEST.md is rendered from manifest.yaml.
+    destination: data/manifest.yaml
+
+  - id: manifest-markdown
+    title: Rendered provenance table
+    source_url: https://github.com/ericchansen/microsoft-foundry
+    source_label: this repository
+    licence: Generated-Synthetic
+    version: "spine v1"
+    transformation: Rendered from data/manifest.yaml by 'foundry data manifest'.
+    destination: data/MANIFEST.md
+
+external:
+  - id: schema-guided-dialogue
+    title: Schema-Guided Dialogue (SGD)
+    source_url: https://github.com/google-research-datasets/dstc8-schema-guided-dialogue
+    source_label: google-research-datasets/dstc8-schema-guided-dialogue
+    licence: CC-BY-SA-4.0
+    version: "d1d3d6f5cd2f0a5b0a5e0a0e5b6e8b1a (tag: master, pinned in data/external/manifest.yaml)"
+    vendored: false
+    transformation: >-
+      Not downloaded by this repository. An authorized operator may stage the
+      pinned release separately for local comparison; no derivative is committed.
+    destination: data/external/cache/schema-guided-dialogue
+    exclusion_reason: >-
+      Share-alike. A transformed derivative committed here would place a
+      copyleft obligation on this repository.
+
+  - id: ms-marco
+    title: MS MARCO
+    source_url: https://microsoft.github.io/msmarco/
+    source_label: microsoft.github.io/msmarco
+    licence: MSMARCO-Non-Commercial
+    version: "v2.1"
+    vendored: false
+    transformation: Not used in this layer. Recorded so the exclusion is explicit.
+    destination: data/external/cache/ms-marco
+    exclusion_reason: >-
+      Non-commercial terms are incompatible with an unrestricted public
+      repository.
+
+  - id: gaia
+    title: GAIA benchmark
+    source_url: https://huggingface.co/datasets/gaia-benchmark/GAIA
+    source_label: huggingface.co/datasets/gaia-benchmark/GAIA
+    licence: Gated-Registration-Required
+    version: "2023-11"
+    vendored: false
+    transformation: Not used in this layer. Recorded so the exclusion is explicit.
+    destination: data/external/cache/gaia
+    exclusion_reason: >-
+      Access is gated behind acceptance of terms, so the content cannot be
+      mirrored into a public repository.

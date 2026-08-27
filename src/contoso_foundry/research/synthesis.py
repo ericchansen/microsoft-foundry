@@ -1,0 +1,74 @@
+"""Evidence-grounded synthesis interfaces for Contoso Research."""
+
+from __future__ import annotations
+
+import json
+from collections.abc import Callable
+from typing import Any, Protocol
+
+# Agentserver 2.x no longer exports this protocol header from a public module.
+FOUNDRY_CALL_ID_HEADER = "x-agent-foundry-call-id"
+
+
+class SynthesisError(RuntimeError):
+    """Raised when synthesis fails or produces an empty answer."""
+
+
+class Synthesizer(Protocol):
+    def __call__(self, question: str, evidence: list[dict[str, Any]], call_id: str) -> str: ...
+
+
+def evidence_prompt(question: str, evidence: list[dict[str, Any]]) -> str:
+    """Render bounded Toolbox evidence for a model without hidden context."""
+    return (
+        "Answer the Contoso research question using only the JSON evidence below. "
+        "State the visible scope limitation, cite tool names inline, distinguish facts from inference, "
+        "and say when evidence is empty. Never invent identifiers or totals.\n\n"
+        f"Question:\n{question}\n\n"
+        f"Evidence:\n{json.dumps(evidence, sort_keys=True, separators=(',', ':'))}"
+    )
+
+
+def model_synthesizer(invoke: Callable[..., Any]) -> Synthesizer:
+    """Adapt a LangChain chat model while keeping the graph easy to test."""
+
+    def synthesize(question: str, evidence: list[dict[str, Any]], call_id: str) -> str:
+        response = invoke(
+            evidence_prompt(question, evidence),
+            extra_headers={FOUNDRY_CALL_ID_HEADER: call_id},
+        )
+        content = getattr(response, "content", response)
+        if content is None:
+            content = ""
+        if isinstance(content, list):
+            content = "".join(
+                str(part.get("text") or "") if isinstance(part, dict) else ("" if part is None else str(part))
+                for part in content
+            )
+        answer = str(content).strip()
+        if not answer:
+            raise SynthesisError("the model returned an empty synthesis")
+        return answer
+
+    return synthesize
+
+
+def deterministic_synthesizer(
+    question: str,
+    evidence: list[dict[str, Any]],
+    call_id: str,
+) -> str:
+    """Stable test/evaluation synthesis; production never selects this path."""
+    del question, call_id
+    parts = []
+    total = 0
+    for item in evidence:
+        result = item["result"]
+        count = len(result) if isinstance(result, list) else (0 if result is None else 1)
+        total += count
+        parts.append(f"{item['tool']} returned {count} visible record(s)")
+    return (
+        f"Scoped Contoso evidence contains {total} record(s). "
+        + "; ".join(parts)
+        + ". This answer is limited to the server-resolved caller scope."
+    )

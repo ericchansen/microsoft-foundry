@@ -1,0 +1,48 @@
+schema_version: 1
+timezone: America/Chicago
+maximum_conversations_per_hour: 4
+travel_maximum_conversations_per_hour: 2
+travel_quarter_minutes: [0, 30]
+weekday_business_hours:
+  start: 8
+  end: 18
+quiet_hours:
+  weekend_slots: ['10:00', '14:00']
+  holiday_slots: ['10:00', '14:00']
+federal_holidays:
+  - {id: new-years-day, month: 1, day: 1, observe_weekend: true}
+  - {id: martin-luther-king-jr-day, month: 1, weekday: monday, occurrence: 3}
+  - {id: washington-birthday, month: 2, weekday: monday, occurrence: 3}
+  - {id: memorial-day, month: 5, weekday: monday, occurrence: last}
+  - {id: juneteenth, month: 6, day: 19, observe_weekend: true}
+  - {id: independence-day, month: 7, day: 4, observe_weekend: true}
+  - {id: labor-day, month: 9, weekday: monday, occurrence: 1}
+  - {id: columbus-day, month: 10, weekday: monday, occurrence: 2}
+  - {id: veterans-day, month: 11, day: 11, observe_weekend: true}
+  - {id: thanksgiving-day, month: 11, weekday: thursday, occurrence: 4}
+  - {id: christmas-day, month: 12, day: 25, observe_weekend: true}
+personas:
+  - id: cost-conscious-consultant
+    description: Prefers economy fares and asks whether approval is required.
+  - id: accessibility-planner
+    description: Checks route options carefully before asking for a simulation.
+  - id: last-minute-field-engineer
+    description: Needs a policy-safe option and never asks the agent to purchase.
+scenarios:
+  - id: seattle-to-chicago
+    persona: cost-conscious-consultant
+    prompt: >-
+      Find the synthetic route from LOC-001 (Contoso Seattle Headquarters) to
+      LOC-002 (Contoso Chicago Distribution). Use travel_search_fares to read the
+      first published fare, then simulate it for 2026-09-15. Do not purchase or
+      reserve anything.
+  - id: policy-check
+    persona: accessibility-planner
+    prompt: >-
+      Explain the synthetic travel policy that applies to me and state whether a
+      booking simulation makes any purchase.
+  - id: refundable-fare
+    persona: last-minute-field-engineer
+    prompt: >-
+      Find refundable synthetic fares on ROUTE-0001 and explain which option can be
+      simulated under my policy. Do not purchase or reserve anything.

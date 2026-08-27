@@ -1,0 +1,104 @@
+capability: catalog
+version: 1.0.0
+title: Product catalogue and inventory
+summary: >-
+  The product catalogue and the stock behind it. The catalogue itself is company
+  wide - an EMEA agent that cannot name a product assembled in APAC is not more
+  secure, just less useful - while stock is scoped, because a stock level is a
+  fact about a particular warehouse in a particular region.
+
+identity:
+  scope_source: server
+  policy_keys: [oid, tid]
+
+tools:
+  - name: catalog_lookup_product
+    title: Look up a product
+    summary: Fetch one product from the company-wide catalogue by canonical id.
+    side_effect: read
+    data_classification: internal
+    required_roles: [retail.read]
+    parameters:
+      type: object
+      additionalProperties: false
+      properties:
+        product_id:
+          type: string
+          description: Canonical product identifier, for example PROD-0031.
+          pattern: '^PROD-\d{4}$'
+      required: [product_id]
+    returns:
+      type: [object, 'null']
+      description: The product record, or null when the id is unknown.
+    examples:
+      - description: Retrieve a catalogue entry.
+        arguments: {product_id: PROD-0001}
+
+  - name: catalog_search_products
+    title: Search the catalogue
+    summary: >-
+      List catalogue entries by category, supplier or lifecycle state. Discontinued
+      products remain visible so that an agent can explain why an order cannot be
+      placed rather than claiming the product never existed.
+    side_effect: read
+    data_classification: internal
+    required_roles: [retail.read]
+    parameters:
+      type: object
+      additionalProperties: false
+      properties:
+        category_id:
+          type: string
+          description: Canonical product category identifier.
+        supplier_id:
+          type: string
+          description: Canonical supplier identifier.
+        is_discontinued:
+          type: integer
+          description: 1 to return only discontinued products, 0 for current ones.
+          enum: [0, 1]
+        limit:
+          type: integer
+          description: Maximum rows to return, capped server-side.
+          minimum: 1
+          maximum: 200
+      required: []
+    returns:
+      type: array
+      description: Matching catalogue entries.
+    examples:
+      - description: Current products from one supplier.
+        arguments: {supplier_id: SUP-003, is_discontinued: 0}
+
+  - name: catalog_check_stock
+    title: Check stock levels
+    summary: >-
+      Report quantity on hand and reorder level per location. Scoped: a caller
+      sees stock only at locations in their region, so an availability answer is
+      an answer about their own network.
+    side_effect: read
+    data_classification: internal
+    required_roles: [retail.read]
+    parameters:
+      type: object
+      additionalProperties: false
+      properties:
+        product_id:
+          type: string
+          description: Canonical product identifier to report stock for.
+          pattern: '^PROD-\d{4}$'
+        location_id:
+          type: string
+          description: Canonical location identifier to narrow to one site.
+        limit:
+          type: integer
+          description: Maximum rows to return, capped server-side.
+          minimum: 1
+          maximum: 200
+      required: []
+    returns:
+      type: array
+      description: Stock rows at in-scope locations.
+    examples:
+      - description: Stock for one product across the caller's network.
+        arguments: {product_id: PROD-0001}

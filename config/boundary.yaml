@@ -1,0 +1,391 @@
+# Ownership boundary — the single blast radius for this project.
+#
+# THE RULE
+#   Everything this project creates, assigns or deletes lives inside ONE resource
+#   group. Every other resource group, identity, App Insights instance, agent,
+#   endpoint and role assignment in the subscription belongs to somebody else and
+#   is read-only.
+#
+# `foundry boundary` validates this file before anything is provisioned, and
+# refuses to create the resource group if any check fails.
+#
+# Scopes below are RELATIVE to the resource group on purpose. A relative scope
+# cannot name another subscription or resource group, so the boundary is enforced
+# by the shape of the data rather than by reviewer attention.
+
+version: 1
+
+resource_group: rg-contoso-agents
+
+modules:
+  core:
+    enabled_by_default: true
+  optional-control-plane:
+    enabled_by_default: false
+
+# Later deployments may reuse only this project's own group. The live gate proves
+# ownership tags and the complete resource inventory before accepting it.
+allow_existing_resource_group: true
+
+tags:
+  project: contoso-agents
+  managed-by: microsoft-foundry-demo
+  boundary: rg-contoso-agents
+  cost-centre: demo
+
+# Resources v1 intends to create. Phase 0 creates none of them; this is the
+# declared plan the boundary check validates ahead of later stacked PRs.
+resources:
+  - name: foundry-account
+    kind: Microsoft.CognitiveServices/accounts
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry
+  - name: travel-project
+    kind: Microsoft.CognitiveServices/accounts/projects
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/projects/travel
+  - name: support-project
+    kind: Microsoft.CognitiveServices/accounts/projects
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/projects/support
+  - name: research-project
+    kind: Microsoft.CognitiveServices/accounts/projects
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/projects/research
+  - name: platform-project
+    kind: Microsoft.CognitiveServices/accounts/projects
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/projects/platform
+  - name: log-analytics
+    kind: Microsoft.OperationalInsights/workspaces
+    scope: providers/Microsoft.OperationalInsights/workspaces/contoso-agents-logs
+  - name: app-insights
+    kind: microsoft.insights/components
+    scope: providers/microsoft.insights/components/contoso-agents-insights
+  - name: app-insights-failure-anomalies
+    kind: Microsoft.AlertsManagement/smartDetectorAlertRules
+    scope: providers/Microsoft.AlertsManagement/smartDetectorAlertRules/*contoso-agents-insights
+  - name: key-vault
+    kind: Microsoft.KeyVault/vaults
+    scope: providers/Microsoft.KeyVault/vaults/contoso-agents-kv-*
+  - name: storage
+    kind: Microsoft.Storage/storageAccounts
+    scope: providers/Microsoft.Storage/storageAccounts/contosoagents*
+  - name: container-registry
+    kind: Microsoft.ContainerRegistry/registries
+    scope: providers/Microsoft.ContainerRegistry/registries/contosoagents*
+  - name: travel-model-deployment
+    kind: Microsoft.CognitiveServices/accounts/deployments
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/deployments/travel-gpt-5-4-mini
+  - name: travel-prompt-agent
+    kind: Microsoft.CognitiveServices/accounts/projects/agents
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/projects/travel/agents/contoso-travel
+  - name: travel-traffic-environment
+    kind: Microsoft.App/managedEnvironments
+    scope: providers/Microsoft.App/managedEnvironments/contoso-agents-traffic-env
+  - name: travel-traffic-job
+    kind: Microsoft.App/jobs
+    scope: providers/Microsoft.App/jobs/contoso-agents-travel-traffic
+  - name: travel-traffic-ledger
+    kind: Microsoft.Storage/storageAccounts/blobServices/containers
+    scope: providers/Microsoft.Storage/storageAccounts/contosoagents*/blobServices/default/containers/synthetic-traffic-ledger
+  - name: sre-control-plane
+    module: optional-control-plane
+    kind: Microsoft.App/agents
+    scope: providers/Microsoft.App/agents/contoso-agents-sre-control-plane
+  - name: field-container-app
+    kind: Microsoft.App/containerApps
+    scope: providers/Microsoft.App/containerApps/contoso-field
+  - name: field-container-environment
+    kind: Microsoft.App/managedEnvironments
+    scope: providers/Microsoft.App/managedEnvironments/contoso-field-env
+  - name: approvals-workflow
+    module: optional-control-plane
+    kind: Microsoft.Logic/workflows
+    scope: providers/Microsoft.Logic/workflows/contoso-agents-approvals-loop
+  - name: support-model
+    kind: Microsoft.CognitiveServices/accounts/deployments
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/deployments/support-gpt-5-4-mini
+  - name: research-model
+    kind: Microsoft.CognitiveServices/accounts/deployments
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/deployments/gpt-5.4-mini-2026-03-17
+  - name: field-model-deployment
+    kind: Microsoft.CognitiveServices/accounts/deployments
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/deployments/contoso-field-model
+  - name: action-group
+    kind: Microsoft.Insights/actionGroups
+    scope: providers/Microsoft.Insights/actionGroups/contoso-agents-alerts
+  - name: monthly-budget
+    kind: Microsoft.Consumption/budgets
+    scope: providers/Microsoft.Consumption/budgets/contoso-agents-monthly
+  - name: ai-gateway
+    kind: Microsoft.ApiManagement/service
+    scope: providers/Microsoft.ApiManagement/service/contoso-agents-gateway
+  - name: ai-gateway-policy-fragments
+    kind: Microsoft.ApiManagement/service/policyFragments
+    scope: providers/Microsoft.ApiManagement/service/contoso-agents-gateway/policyFragments/*-token-governance
+  - name: ai-gateway-backend
+    kind: Microsoft.ApiManagement/service/backends
+    scope: providers/Microsoft.ApiManagement/service/contoso-agents-gateway/backends/foundry-models
+  - name: ai-gateway-project-apis
+    kind: Microsoft.ApiManagement/service/apis
+    scope: providers/Microsoft.ApiManagement/service/contoso-agents-gateway/apis/foundry-*
+  - name: ai-gateway-project-subscriptions
+    kind: Microsoft.ApiManagement/service/subscriptions
+    scope: providers/Microsoft.ApiManagement/service/contoso-agents-gateway/subscriptions/*-gateway
+  - name: foundry-guardrail-policy
+    kind: Microsoft.CognitiveServices/accounts/raiPolicies
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/raiPolicies/contoso-agents-guardrails
+
+diagnostic_settings:
+  - name: ai-gateway-logs
+    kind: Microsoft.Insights/diagnosticSettings
+    scope: providers/Microsoft.ApiManagement/service/contoso-agents-gateway/providers/Microsoft.Insights/diagnosticSettings/contoso-agents-gateway-logs
+    target_workspace: log-analytics
+  - name: approvals-platform-logs
+    module: optional-control-plane
+    kind: Microsoft.Insights/diagnosticSettings
+    scope: providers/Microsoft.Logic/workflows/contoso-agents-approvals-loop
+    target_workspace: log-analytics
+
+policy_assignments:
+  - name: approved-models
+    kind: Microsoft.Authorization/policyAssignments
+    scope: .
+  - name: model-eligibility
+    kind: Microsoft.Authorization/policyAssignments
+    scope: .
+
+# Identities. All are created inside the boundary. Reusing any pre-existing
+# identity is rejected by the `plan:no-reuse` check.
+identities:
+  - name: agent-runtime-identity
+    kind: Microsoft.ManagedIdentity/userAssignedIdentities
+    scope: providers/Microsoft.ManagedIdentity/userAssignedIdentities/contoso-agents-runtime
+    reuse_existing: false
+  - name: github-deploy-identity
+    kind: Microsoft.ManagedIdentity/userAssignedIdentities
+    scope: providers/Microsoft.ManagedIdentity/userAssignedIdentities/contoso-agents-github-deploy
+    reuse_existing: false
+  - name: travel-traffic-identity
+    kind: Microsoft.ManagedIdentity/userAssignedIdentities
+    scope: providers/Microsoft.ManagedIdentity/userAssignedIdentities/contoso-agents-travel-traffic
+    reuse_existing: false
+  - name: approvals-identity
+    module: optional-control-plane
+    kind: Microsoft.ManagedIdentity/userAssignedIdentities
+    scope: providers/Microsoft.ManagedIdentity/userAssignedIdentities/contoso-agents-approvals
+    reuse_existing: false
+  - name: sre-identity
+    module: optional-control-plane
+    kind: Microsoft.ManagedIdentity/userAssignedIdentities
+    scope: providers/Microsoft.ManagedIdentity/userAssignedIdentities/contoso-agents-sre
+    reuse_existing: false
+  - name: field-runtime-identity
+    kind: Microsoft.ManagedIdentity/userAssignedIdentities
+    scope: providers/Microsoft.ManagedIdentity/userAssignedIdentities/contoso-field-runtime
+    reuse_existing: false
+
+external_principals:
+  - name: sre-operator-group
+    module: optional-control-plane
+    object_id_environment: SRE_OPERATOR_GROUP_OBJECT_ID
+
+# Role assignments. Every scope is inside the resource group; nothing is granted
+# at subscription or management-group level.
+role_assignments:
+  - name: runtime-reads-foundry
+    role: Foundry User
+    principal: agent-runtime-identity
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry
+  - name: deploy-manages-support-project
+    role: Foundry Project Manager
+    principal: github-deploy-identity
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/projects/support
+  - name: deploy-pushes-agent-images
+    role: AcrPush
+    principal: github-deploy-identity
+    scope: providers/Microsoft.ContainerRegistry/registries/contosoagents*
+  - name: deploy-contributor
+    role: Contributor
+    principal: github-deploy-identity
+    scope: .
+  - name: deploy-rbac-administrator
+    role: Role Based Access Control Administrator
+    principal: github-deploy-identity
+    scope: .
+  - name: deploy-policy-contributor
+    role: Resource Policy Contributor
+    principal: github-deploy-identity
+    scope: .
+  - name: field-pulls-images
+    role: AcrPull
+    principal: field-runtime-identity
+    scope: providers/Microsoft.ContainerRegistry/registries/contosoagents*
+  - name: field-invokes-foundry
+    role: Foundry User
+    principal: field-runtime-identity
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry
+  - name: field-publishes-monitoring
+    role: Monitoring Metrics Publisher
+    principal: field-runtime-identity
+    scope: providers/microsoft.insights/components/contoso-agents-insights
+  - name: travel-reads-logs
+    role: Log Analytics Reader
+    principal: travel-project
+    scope: providers/microsoft.insights/components/contoso-agents-insights
+  - name: travel-uses-foundry
+    role: Foundry User
+    principal: travel-project
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry
+  - name: travel-reads-monitoring-data
+    role: Privileged Monitoring Data Reader
+    principal: travel-project
+    scope: providers/microsoft.insights/components/contoso-agents-insights
+  - name: support-reads-logs
+    role: Log Analytics Reader
+    principal: support-project
+    scope: providers/microsoft.insights/components/contoso-agents-insights
+  - name: support-uses-foundry
+    role: Foundry User
+    principal: support-project
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry
+  - name: support-reads-monitoring-data
+    role: Privileged Monitoring Data Reader
+    principal: support-project
+    scope: providers/microsoft.insights/components/contoso-agents-insights
+  - name: research-reads-logs
+    role: Log Analytics Reader
+    principal: research-project
+    scope: providers/microsoft.insights/components/contoso-agents-insights
+  - name: research-uses-foundry
+    role: Foundry User
+    principal: research-project
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry
+  - name: research-reads-monitoring-data
+    role: Privileged Monitoring Data Reader
+    principal: research-project
+    scope: providers/microsoft.insights/components/contoso-agents-insights
+  - name: platform-reads-logs
+    role: Log Analytics Reader
+    principal: platform-project
+    scope: providers/microsoft.insights/components/contoso-agents-insights
+  - name: platform-uses-foundry
+    role: Foundry User
+    principal: platform-project
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry
+  - name: platform-reads-monitoring-data
+    role: Privileged Monitoring Data Reader
+    principal: platform-project
+    scope: providers/microsoft.insights/components/contoso-agents-insights
+  - name: gateway-accesses-foundry
+    role: Foundry User
+    principal: ai-gateway
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry
+  - name: travel-traffic-uses-foundry
+    role: Foundry User
+    principal: travel-traffic-identity
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry
+  - name: travel-traffic-pulls-images
+    role: AcrPull
+    principal: travel-traffic-identity
+    scope: providers/Microsoft.ContainerRegistry/registries/contosoagents*
+  - name: travel-traffic-writes-ledger
+    role: Storage Blob Data Contributor
+    principal: travel-traffic-identity
+    scope: providers/Microsoft.Storage/storageAccounts/contosoagents*
+  - name: sre-user-reads-owned-resources
+    module: optional-control-plane
+    role: Reader
+    principal: sre-identity
+    scope: .
+  - name: sre-user-reads-monitoring
+    module: optional-control-plane
+    role: Monitoring Reader
+    principal: sre-identity
+    scope: .
+  - name: sre-user-reads-logs
+    module: optional-control-plane
+    role: Log Analytics Reader
+    principal: sre-identity
+    scope: providers/microsoft.insights/components/contoso-agents-insights
+  - name: sre-system-reads-owned-resources
+    module: optional-control-plane
+    role: Reader
+    principal: sre-control-plane
+    scope: .
+  - name: sre-system-reads-monitoring
+    module: optional-control-plane
+    role: Monitoring Reader
+    principal: sre-control-plane
+    scope: .
+  - name: sre-system-reads-logs
+    module: optional-control-plane
+    role: Log Analytics Reader
+    principal: sre-control-plane
+    scope: providers/microsoft.insights/components/contoso-agents-insights
+  - name: sre-operators-use-agent
+    module: optional-control-plane
+    role: SRE Agent Standard User
+    principal: sre-operator-group
+    scope: providers/Microsoft.App/agents/contoso-agents-sre-control-plane
+
+# Teardown. Deleting the resource group removes everything above in one action,
+# which is the point of keeping the blast radius to a single group.
+teardown:
+  - name: delete-resource-group
+    kind: resource-group
+    scope: .
+    note: az group delete -n rg-contoso-agents --yes
+
+# Components that live OUTSIDE Azure and therefore outside this boundary. They
+# cannot be torn down by deleting the resource group, so they are inventoried
+# here explicitly and must be removed by hand.
+external_teardown:
+  - name: concierge-channels-and-pins
+    system: Microsoft 365 and Microsoft Copilot Studio
+    note: >-
+      Remove every channel, tenant availability approval and pin before deleting
+      the agent. Confirm it is no longer discoverable.
+    reference: https://learn.microsoft.com/microsoft-copilot-studio/publication-add-bot-to-microsoft-teams
+  - name: concierge-connections-and-flows
+    system: Power Platform
+    note: >-
+      Disable agent flows, then remove target connector connections, connection
+      references and the custom connector after checking for shared dependencies.
+    reference: https://learn.microsoft.com/power-platform/alm/connection-reference
+  - name: concierge-deployment-identity
+    system: Microsoft Entra ID and Power Platform
+    note: >-
+      Remove environment role assignments, deactivate and delete each deployment
+      application user, revoke client secrets and federated credentials, and
+      delete the deployment service principal only after no other workload uses it.
+    reference: https://learn.microsoft.com/power-platform/admin/manage-application-users
+  - name: concierge-github-deployment-configuration
+    system: GitHub Actions
+    note: >-
+      Delete Concierge deployment secrets from each GitHub environment, then
+      remove the DEV, TEST, TEST-acceptance and PROD deployment environments after
+      retained workflow evidence no longer depends on them.
+    reference: https://docs.github.com/actions/deployment/targeting-different-environments/managing-environments-for-deployment
+  - name: concierge-telemetry
+    system: Microsoft Copilot Studio and Power Platform
+    note: >-
+      Disable PROD agent telemetry, remove DEV and TEST environment telemetry
+      exports, and keep Dataverse transcript saving disabled.
+    reference: https://learn.microsoft.com/microsoft-copilot-studio/admin-transcript-controls
+  - name: concierge-capacity
+    system: Power Platform
+    note: >-
+      Remove or reassign environment-specific Copilot Credit allocations after
+      channels and flows are stopped.
+    reference: https://learn.microsoft.com/power-platform/admin/programmability-tutorial-manage-copilot-credit-allocations
+  - name: power-platform-environments
+    system: Power Platform
+    note: >-
+      Dedicated DEV, TEST and PROD environments. Not created by this project's
+      automation because they are tenant-scope mutations outside the Azure
+      boundary. Delete only after proving they hold no unrelated assets.
+    reference: https://learn.microsoft.com/power-platform/admin/create-environment
+  - name: concierge-solutions-and-agent
+    system: Microsoft Copilot Studio
+    note: >-
+      Unpublish the Concierge agent, uninstall managed PROD then TEST solutions,
+      remove the unmanaged DEV solution last, and retain accepted and rollback
+      artifacts for the declared release retention period.
+    reference: https://learn.microsoft.com/microsoft-copilot-studio/authoring-solutions-overview

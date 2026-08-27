@@ -1,0 +1,155 @@
+schema_version: 1
+
+solution:
+  unique_name: ContosoConcierge
+  publisher_prefix: ccs
+  source_path: solutions/ContosoConcierge/src
+  source_type: unmanaged
+  accepted_version: 1.0.0.0
+  managed_artifact: ContosoConcierge_1_0_0_0_managed.zip
+  minimum_retention_days: 90
+  rollback:
+    policy: forward-fix-or-authorized-controlled-reinstall
+    automatic_rollback: false
+    retain_managed_zip_for_evidence: true
+    require_prior_artifact_attestation: true
+    require_environment_backup: true
+    require_dependency_and_data_inventory: true
+    require_data_loss_acknowledgement: true
+
+tooling:
+  pac_cli_package: Microsoft.PowerApps.CLI.Tool
+  pac_cli_version: 2.11.2
+  dotnet_tool_manifest: .config/dotnet-tools.json
+
+environments:
+  DEV:
+    solution_type: unmanaged
+    environment_type: sandbox
+    purpose: author-and-export
+  TEST:
+    solution_type: managed
+    environment_type: sandbox
+    purpose: synthetic-validation
+  PROD:
+    solution_type: managed
+    environment_type: production
+    purpose: approved-runtime
+
+promotion:
+  build_once: true
+  managed_artifact_order: [TEST, PROD]
+  rebuild_between_targets: false
+  trusted_repository: ericchansen/microsoft-foundry
+  trusted_workflow: .github/workflows/concierge-alm.yml
+  trusted_branch: main
+  require_exact_source_sha: true
+  require_artifact_archive_digest: true
+  require_github_attestation: true
+  validate_internal_solution_identity: true
+  deployment_settings:
+    DEV: deployment/concierge/dev.settings.json
+    TEST: deployment/concierge/test.settings.json
+    PROD: deployment/concierge/prod.settings.json
+  test_acceptance:
+    import_and_acceptance_are_separate: true
+    protected_environment: concierge-test-acceptance
+    suite: config/concierge/delegation-tests.yaml
+    data_classification: synthetic
+    runtime_harness_required: true
+    accepted_artifact_after_pass_only: true
+  automatic_runtime_publish: false
+  runtime_publish_gate: manual-agent-owner
+  tenant_availability_gate: microsoft-365-admin-approval
+  capacity_gate: verified-copilot-credit-allocation
+
+configuration:
+  environment_variables:
+    - ccs_AcceptedVersion
+    - ccs_FoundrySpecialistBaseUrl
+  connection_references:
+    - ccs_FoundrySpecialist
+  live_values_in_git: false
+  secrets_in_deployment_settings: false
+
+telemetry:
+  shared_application_insights: contoso-agents-insights
+  DEV:
+    environment_level:
+      enabled: true
+      preview: true
+      synthetic_only: true
+    agent_level:
+      enabled: false
+    dataverse_transcripts:
+      save: false
+  TEST:
+    environment_level:
+      enabled: true
+      preview: true
+      synthetic_only: true
+    agent_level:
+      enabled: false
+    dataverse_transcripts:
+      save: false
+  PROD:
+    environment_level:
+      enabled: false
+      preview: true
+      synthetic_only: false
+    agent_level:
+      enabled: true
+      log_conversation_details: false
+      log_sensitive_activity_properties: false
+    dataverse_transcripts:
+      save: false
+
+roles:
+  authoring:
+    - Environment Maker
+  environment_configuration:
+    - Environment Admin
+  deployment:
+    - Power Platform Administrator
+    - System Administrator
+  tenant_availability:
+    - Microsoft 365 Administrator
+  capacity_management:
+    - Power Platform Administrator
+
+licenses:
+  authoring:
+    - Microsoft Copilot Studio User
+
+capacity:
+  requirement: Copilot Credits allocated to the production environment
+  source_of_truth: Power Platform admin center or authorized licensing API
+  unknown_is_sufficient: false
+
+live_prerequisites:
+  environments: authorized administrators provide isolated DEV, TEST, and PROD environments
+  capacity: Copilot Credits are verified and allocated before production import
+  connections: protected environment settings bind the approved connector and connection
+  unavailable_result: fail without importing, publishing, or allocating capacity
+
+teardown_inventory:
+  - channels
+  - tenant-availability-pins
+  - connection-references
+  - connector-connections
+  - custom-connectors
+  - agent-flows
+  - application-insights-agent-settings
+  - application-insights-environment-export
+  - dataverse-transcript-settings
+  - deployment-service-principal
+  - power-platform-application-users
+  - deployment-client-secrets
+  - deployment-federated-credentials
+  - power-platform-environment-role-assignments
+  - github-environment-secrets
+  - github-deployment-environments
+  - managed-solutions
+  - unmanaged-dev-solution
+  - copilot-credit-capacity-allocations
+  - power-platform-environments

@@ -1,0 +1,64 @@
+version: 1
+
+# Limits are deliberately conservative demo defaults. Change this file and
+# redeploy; no Python or Bicep edit is required.
+default_project:
+  tokens_per_minute: 2000
+  total_token_quota: 100000
+  quota_period: Monthly
+
+# Expected live deployments for fail-closed verification. Association deployments
+# receive this catalog explicitly from the model-owning dependency stack; the
+# gateway templates never assume these deployments exist.
+expected_model_deployments:
+  - deployment_name: travel-gpt-5-4-mini
+    model_name: gpt-5.4-mini
+    version: "2026-03-17"
+    format: OpenAI
+    rai_policy_name: contoso-agents-guardrails
+  - deployment_name: contoso-field-model
+    model_name: gpt-4.1-mini
+    version: "2025-04-14"
+    format: OpenAI
+    rai_policy_name: Microsoft.DefaultV2
+  - deployment_name: support-gpt-5-4-mini
+    model_name: gpt-5.4-mini
+    version: "2026-03-17"
+    format: OpenAI
+    rai_policy_name: Microsoft.DefaultV2
+  - deployment_name: gpt-5.4-mini-2026-03-17
+    model_name: gpt-5.4-mini
+    version: "2026-03-17"
+    format: OpenAI
+    rai_policy_name: Microsoft.DefaultV2
+
+projects:
+  travel:
+    tokens_per_minute: 20000
+    total_token_quota: 2000000
+    quota_period: Monthly
+  support:
+    tokens_per_minute: 10000
+    total_token_quota: 1000000
+    quota_period: Monthly
+  research:
+    tokens_per_minute: 10000
+    total_token_quota: 1000000
+    quota_period: Monthly
+  platform:
+    tokens_per_minute: 5000
+    total_token_quota: 500000
+    quota_period: Monthly
+
+model_governance:
+  # A publisher-wide allow entry would permit every model from that publisher.
+  # Keep this empty and approve exact families below.
+  allowed_publishers: []
+  allowed_asset_ids:
+    - azureml://registries/azure-openai/models/gpt-5.4-mini/
+    - azureml://registries/azure-openai/models/gpt-4.1-mini/
+    - azureml://registries/azure-openai/models/gpt-5.6-sol/
+    - azureml://registries/azure-openai/models/gpt-5.6-luna/
+    - azureml://registries/azure-openai/models/gpt-5.6-terra/
+  only_allow_direct_from_azure: true
+  deny_preview_models: true
