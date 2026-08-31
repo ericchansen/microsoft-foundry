@@ -19,7 +19,7 @@ from contoso_travel_agent.evaluation import (
     load_golden,
     run_openai_eval,
 )
-from contoso_travel_agent.runtime import TravelAgentRuntime
+from contoso_travel_agent.runtime import ExecutedToolCall, ServerExecutedTravelRuntime
 
 
 class OperationsError(RuntimeError):
@@ -71,32 +71,37 @@ def smoke(
     span_context = (
         tracer.start_as_current_span("contoso.travel.smoke") if tracer is not None else nullcontext(None)
     )
-    with span_context as span, _build_database(repo_root) as connection:
+    with span_context as span:
         if span is not None:
             span.set_attribute("contoso.synthetic", True)
             span.set_attribute("gen_ai.agent.name", spec.name)
             span.set_attribute("gen_ai.agent.version", str(manifest["created_version"]))
-        runtime = TravelAgentRuntime(
-            openai_client,
-            spec,
-            connection,
-            contracts_dir=repo_root / "config" / "toolbox",
-            tracer=tracer,
-        )
+        runtime = ServerExecutedTravelRuntime(openai_client, spec)
         answer = runtime.run_turn(
-            "Find the synthetic route from Contoso Seattle Headquarters to Contoso Chicago Distribution.",
+            "Find the synthetic route from LOC-001 (Contoso Seattle Headquarters) "
+            "to LOC-002 (Contoso Chicago Distribution).",
             agent_version=str(manifest["created_version"]),
         )
-    tool_names = [call.tool for call in runtime.audit]
-    if "travel_search_routes" not in tool_names:
-        raise OperationsError("the exact candidate did not call travel_search_routes")
+    expected_route_call = ExecutedToolCall.from_arguments(
+        "travel_search_routes",
+        {
+            "origin_location_id": "LOC-001",
+            "destination_location_id": "LOC-002",
+            "limit": 10,
+        },
+    )
+    if "ROUTE-0001" not in answer or "synthetic" not in answer.casefold():
+        raise OperationsError("the exact candidate did not return the required synthetic route evidence")
+    if runtime.executed_calls != [expected_route_call]:
+        raise OperationsError("the exact candidate did not execute the expected server-side route call")
     evidence = {
         "agent_name": spec.name,
         "agent_version": str(manifest["created_version"]),
         "definition_digest": spec.digest,
         "model_version": spec.model_version,
         "synthetic": True,
-        "tool_names": tool_names,
+        "client_function_callbacks": 0,
+        "tool_execution": "server",
         "answer_length": len(answer),
         "status": "passed",
     }
@@ -118,26 +123,20 @@ def evaluate(
         raise OperationsError("evaluation candidate does not match the exact checked-in definition")
     version = str(manifest["created_version"])
     golden = load_golden(repo_root / "agents" / "travel" / "golden" / "travel.jsonl")
-    with _build_database(repo_root) as connection:
+    def run_case(prompt: str, name: str, agent_version: str):
+        if name != spec.name or agent_version != version:
+            raise OperationsError("evaluation attempted to route away from the exact candidate")
+        runtime = ServerExecutedTravelRuntime(openai_client, spec)
+        answer = runtime.run_turn(prompt, agent_version=agent_version)
+        return answer, runtime.executed_calls
 
-        def run_case(prompt: str, name: str, agent_version: str):
-            if name != spec.name or agent_version != version:
-                raise OperationsError("evaluation attempted to route away from the exact candidate")
-            runtime = TravelAgentRuntime(
-                openai_client,
-                spec,
-                connection,
-                contracts_dir=repo_root / "config" / "toolbox",
-            )
-            answer = runtime.run_turn(prompt, agent_version=agent_version)
-            return answer, runtime.executed_calls
-
-        samples = collect_candidate_samples(
-            golden,
-            agent_name=spec.name,
-            agent_version=version,
-            run_case=run_case,
-        )
+    samples = collect_candidate_samples(
+        golden,
+        agent_name=spec.name,
+        agent_version=version,
+        run_case=run_case,
+        server_executed=True,
+    )
     try:
         result = run_openai_eval(
             openai_client,

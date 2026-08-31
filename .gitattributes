@@ -3,6 +3,7 @@
 /.github/workflows/travel.yml text eol=lf
 /agents/travel/** text eol=lf
 /docs/agents/travel.md text eol=lf
+/docs/reference/sources.md -text whitespace=cr-at-eol
 /evals/** text eol=lf
 /infra/modules/model-deployment.bicep text eol=lf
 /infra/travel.bicep text eol=lf

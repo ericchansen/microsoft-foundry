@@ -156,20 +156,6 @@ jobs:
             --template-file infra/modules/model-deployment.bicep \
             --parameters accountName=contoso-agents-foundry
 
-      - name: Create, smoke, and evaluate exact candidate
-        env:
-          PYTHONPATH: src:agents/travel/src
-        run: |
-          python -m contoso_travel_agent.operations deploy
-          python -m contoso_travel_agent.operations smoke
-          python -m contoso_travel_agent.operations evaluate
-
-      - name: Resolve candidate version
-        id: candidate
-        shell: bash
-        run: |
-          echo "version=$(python -c 'import json; print(json.load(open("internal/travel/agent-version.json"))["created_version"])')" >> "$GITHUB_OUTPUT"
-
       - name: Resolve project registry
         id: acr
         shell: bash
@@ -194,6 +180,107 @@ jobs:
           provenance: mode=max
           sbom: true
 
+      - name: Generate ephemeral tool credential
+        shell: bash
+        run: |
+          umask 077
+          openssl rand -hex 32 > "$RUNNER_TEMP/travel-tool-api-key"
+
+      - name: Resolve immutable tool release
+        id: release
+        shell: bash
+        run: |
+          release="v$(python -c 'import yaml; print(yaml.safe_load(open("agents/travel/agent.yaml"))["definition_version"].split(".")[0])')"
+          connection="travel-openapi-${release}"
+          account_id="$(az cognitiveservices account show \
+            --resource-group "$RESOURCE_GROUP" \
+            --name contoso-agents-foundry \
+            --query id \
+            --output tsv)"
+          if az rest \
+            --method get \
+            --url "https://management.azure.com${account_id}/projects/travel/connections/${connection}?api-version=2026-05-01" \
+            >/dev/null 2>&1; then
+            echo "Tool release ${release} already exists; bump definition_version before deploying." >&2
+            exit 1
+          fi
+          echo "name=$release" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy authenticated Travel tool service
+        id: tool
+        shell: bash
+        run: |
+          digest="${{ steps.image.outputs.digest }}"
+          tool_api_key="$(cat "$RUNNER_TEMP/travel-tool-api-key")"
+          deployment="travel-tool-${GITHUB_RUN_ID}"
+          az deployment group create \
+            --name "$deployment" \
+            --resource-group "$RESOURCE_GROUP" \
+            --template-file infra/travel.bicep \
+            --parameters \
+              deployTrafficJob=false \
+              imageRepository="${{ steps.acr.outputs.server }}/contoso-travel" \
+              imageDigest="${digest#sha256:}" \
+              agentVersion=pending \
+              toolApiKey="$tool_api_key" \
+              toolRelease="${{ steps.release.outputs.name }}" \
+              location="$(python -c 'import yaml; print(yaml.safe_load(open("config/selected-region.yaml"))["region"])')"
+          echo "url=$(az deployment group show \
+            --name "$deployment" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query properties.outputs.toolServiceUrl.value \
+            --output tsv)" >> "$GITHUB_OUTPUT"
+
+      - name: Verify authenticated Travel operations
+        shell: bash
+        run: |
+          tool_api_key="$(cat "$RUNNER_TEMP/travel-tool-api-key")"
+          url="${{ steps.tool.outputs.url }}"
+          test "$(curl --fail --silent --show-error --retry 5 "$url/healthz" | jq -r .status)" = healthy
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            --request POST \
+            --header 'content-type: application/json' \
+            --data '{}' \
+            "$url/operations/travel_get_policy")" = 401
+          curl --fail --silent --show-error \
+            --request POST \
+            --header 'content-type: application/json' \
+            --header "x-travel-tool-key: $tool_api_key" \
+            --data '{"origin_location_id":"LOC-001","destination_location_id":"LOC-002"}' \
+            "$url/operations/travel_search_routes" | jq -e '.. | strings | select(. == "ROUTE-0001")' >/dev/null
+          curl --fail --silent --show-error \
+            --request POST \
+            --header 'content-type: application/json' \
+            --header "x-travel-tool-key: $tool_api_key" \
+            --data '{}' \
+            "$url/operations/travel_get_policy" | jq -e '.. | strings | select(. == "TPOL-EMEA-01")' >/dev/null
+          curl --fail --silent --show-error \
+            --request POST \
+            --header 'content-type: application/json' \
+            --header "x-travel-tool-key: $tool_api_key" \
+            --data '{"route_id":"ROUTE-0001"}' \
+            "$url/operations/travel_search_fares" | jq -e '.. | strings | select(. == "FARE-00001")' >/dev/null
+          curl --fail --silent --show-error \
+            --request POST \
+            --header 'content-type: application/json' \
+            --header "x-travel-tool-key: $tool_api_key" \
+            --data '{"route_id":"ROUTE-0001","fare_id":"FARE-00001","depart_on":"2026-09-15"}' \
+            "$url/operations/travel_simulate_booking" | jq -e '.simulated == true and .decision == "allowed"' >/dev/null
+
+      - name: Create, smoke, and evaluate exact candidate
+        env:
+          PYTHONPATH: src:agents/travel/src
+        run: |
+          python -m contoso_travel_agent.operations deploy
+          python -m contoso_travel_agent.operations smoke
+          python -m contoso_travel_agent.operations evaluate
+
+      - name: Resolve candidate version
+        id: candidate
+        shell: bash
+        run: |
+          echo "version=$(python -c 'import json; print(json.load(open("internal/travel/agent-version.json"))["created_version"])')" >> "$GITHUB_OUTPUT"
+
       - name: Deploy disabled-by-default job with exact candidate
         shell: bash
         run: |
@@ -206,7 +293,14 @@ jobs:
               imageRepository="${{ steps.acr.outputs.server }}/contoso-travel" \
               imageDigest="${digest#sha256:}" \
               agentVersion="${{ steps.candidate.outputs.version }}" \
+              deployToolService=false \
+              toolRelease="${{ steps.release.outputs.name }}" \
               location="$(python -c 'import yaml; print(yaml.safe_load(open("config/selected-region.yaml"))["region"])')"
+
+      - name: Remove ephemeral tool credential
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/travel-tool-api-key"
 
       - name: Create and scan sanitized candidate evidence
         env:

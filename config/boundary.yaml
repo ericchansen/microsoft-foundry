@@ -72,9 +72,12 @@ resources:
   - name: travel-model-deployment
     kind: Microsoft.CognitiveServices/accounts/deployments
     scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/deployments/travel-gpt-5-4-mini
+    inventory_api_version: '2024-10-01'
+    inventory_collection: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/deployments
   - name: travel-prompt-agent
     kind: Microsoft.CognitiveServices/accounts/projects/agents
     scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/projects/travel/agents/contoso-travel
+    inventory_data_plane: foundry_agent
   - name: travel-traffic-environment
     kind: Microsoft.App/managedEnvironments
     scope: providers/Microsoft.App/managedEnvironments/contoso-agents-traffic-env
@@ -84,6 +87,8 @@ resources:
   - name: travel-traffic-ledger
     kind: Microsoft.Storage/storageAccounts/blobServices/containers
     scope: providers/Microsoft.Storage/storageAccounts/contosoagents*/blobServices/default/containers/synthetic-traffic-ledger
+    inventory_api_version: '2025-06-01'
+    inventory_collection: providers/Microsoft.Storage/storageAccounts/contosoagents*/blobServices/default/containers
   - name: sre-control-plane
     module: optional-control-plane
     kind: Microsoft.App/agents
@@ -101,36 +106,87 @@ resources:
   - name: support-model
     kind: Microsoft.CognitiveServices/accounts/deployments
     scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/deployments/support-gpt-5-4-mini
+    inventory_api_version: '2024-10-01'
+    inventory_collection: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/deployments
+    required_live: false
   - name: research-model
     kind: Microsoft.CognitiveServices/accounts/deployments
     scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/deployments/gpt-5.4-mini-2026-03-17
+    inventory_api_version: '2024-10-01'
+    inventory_collection: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/deployments
+    required_live: false
   - name: field-model-deployment
     kind: Microsoft.CognitiveServices/accounts/deployments
     scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/deployments/contoso-field-model
+    inventory_api_version: '2024-10-01'
+    inventory_collection: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/deployments
   - name: action-group
     kind: Microsoft.Insights/actionGroups
     scope: providers/Microsoft.Insights/actionGroups/contoso-agents-alerts
   - name: monthly-budget
     kind: Microsoft.Consumption/budgets
     scope: providers/Microsoft.Consumption/budgets/contoso-agents-monthly
+    inventory_api_version: '2024-08-01'
+    inventory_collection: providers/Microsoft.Consumption/budgets
   - name: ai-gateway
     kind: Microsoft.ApiManagement/service
     scope: providers/Microsoft.ApiManagement/service/contoso-agents-gateway
   - name: ai-gateway-policy-fragments
     kind: Microsoft.ApiManagement/service/policyFragments
     scope: providers/Microsoft.ApiManagement/service/contoso-agents-gateway/policyFragments/*-token-governance
+    inventory_api_version: '2024-05-01'
+    inventory_collection: providers/Microsoft.ApiManagement/service/contoso-agents-gateway/policyFragments
+    expected_live_count: 5
   - name: ai-gateway-backend
     kind: Microsoft.ApiManagement/service/backends
     scope: providers/Microsoft.ApiManagement/service/contoso-agents-gateway/backends/foundry-models
+    inventory_api_version: '2024-05-01'
   - name: ai-gateway-project-apis
     kind: Microsoft.ApiManagement/service/apis
     scope: providers/Microsoft.ApiManagement/service/contoso-agents-gateway/apis/foundry-*
+    inventory_api_version: '2024-05-01'
+    inventory_collection: providers/Microsoft.ApiManagement/service/contoso-agents-gateway/apis
+    expected_live_count: 5
   - name: ai-gateway-project-subscriptions
     kind: Microsoft.ApiManagement/service/subscriptions
     scope: providers/Microsoft.ApiManagement/service/contoso-agents-gateway/subscriptions/*-gateway
+    inventory_api_version: '2024-05-01'
+    inventory_collection: providers/Microsoft.ApiManagement/service/contoso-agents-gateway/subscriptions
+    expected_live_count: 5
+  - name: ai-gateway-master-subscription
+    kind: Microsoft.ApiManagement/service/subscriptions
+    scope: providers/Microsoft.ApiManagement/service/contoso-agents-gateway/subscriptions/master
   - name: foundry-guardrail-policy
     kind: Microsoft.CognitiveServices/accounts/raiPolicies
     scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/raiPolicies/contoso-agents-guardrails
+    inventory_api_version: '2024-10-01'
+    inventory_collection: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/raiPolicies
+  - name: foundry-default-rai-policy
+    kind: Microsoft.CognitiveServices/accounts/raiPolicies
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/raiPolicies/Microsoft.Default
+  - name: foundry-default-v2-rai-policy
+    kind: Microsoft.CognitiveServices/accounts/raiPolicies
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/raiPolicies/Microsoft.DefaultV2
+  - name: storage-event-grid-system-topic
+    kind: Microsoft.EventGrid/systemTopics
+    scope: providers/Microsoft.EventGrid/systemTopics/contosoagents*
+  - name: travel-tool-service-v2
+    kind: Microsoft.App/containerApps
+    scope: providers/Microsoft.App/containerApps/contoso-agents-travel-tool-v2
+  - name: travel-appinsights-connection
+    kind: Microsoft.CognitiveServices/accounts/projects/connections
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/projects/travel/connections/appinsights-travel
+    inventory_api_version: '2026-05-01'
+    inventory_collection: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/projects/travel/connections
+  - name: travel-gateway-connection
+    kind: Microsoft.CognitiveServices/accounts/projects/connections
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/projects/travel/connections/ai-gateway-travel
+  - name: travel-default-gateway-connection
+    kind: Microsoft.CognitiveServices/accounts/projects/connections
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/projects/travel/connections/ai-gateway-default
+  - name: travel-tool-connection-v2
+    kind: Microsoft.CognitiveServices/accounts/projects/connections
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/projects/travel/connections/travel-openapi-v2
 
 diagnostic_settings:
   - name: ai-gateway-logs
@@ -166,6 +222,10 @@ identities:
     kind: Microsoft.ManagedIdentity/userAssignedIdentities
     scope: providers/Microsoft.ManagedIdentity/userAssignedIdentities/contoso-agents-travel-traffic
     reuse_existing: false
+  - name: travel-tool-identity-v2
+    kind: Microsoft.ManagedIdentity/userAssignedIdentities
+    scope: providers/Microsoft.ManagedIdentity/userAssignedIdentities/contoso-agents-travel-tool-v2
+    reuse_existing: false
   - name: approvals-identity
     module: optional-control-plane
     kind: Microsoft.ManagedIdentity/userAssignedIdentities
@@ -185,6 +245,7 @@ external_principals:
   - name: sre-operator-group
     module: optional-control-plane
     object_id_environment: SRE_OPERATOR_GROUP_OBJECT_ID
+    required_live: false
 
 # Role assignments. Every scope is inside the resource group; nothing is granted
 # at subscription or management-group level.
@@ -289,6 +350,14 @@ role_assignments:
     role: Storage Blob Data Contributor
     principal: travel-traffic-identity
     scope: providers/Microsoft.Storage/storageAccounts/contosoagents*
+  - name: travel-tool-v2-pulls-images
+    role: AcrPull
+    principal: travel-tool-identity-v2
+    scope: providers/Microsoft.ContainerRegistry/registries/contosoagents*
+  - name: travel-tool-v2-publishes-monitoring
+    role: Monitoring Metrics Publisher
+    principal: travel-tool-identity-v2
+    scope: providers/microsoft.insights/components/contoso-agents-insights
   - name: sre-user-reads-owned-resources
     module: optional-control-plane
     role: Reader
@@ -324,6 +393,7 @@ role_assignments:
     role: SRE Agent Standard User
     principal: sre-operator-group
     scope: providers/Microsoft.App/agents/contoso-agents-sre-control-plane
+    required_live: false
 
 # Teardown. Deleting the resource group removes everything above in one action,
 # which is the point of keeping the blast radius to a single group.
