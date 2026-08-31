@@ -355,7 +355,27 @@ def _check_sre_platform(
     else:
         result.checks.append("live:review-only")
 
-    if properties.get("powerState") not in {"Running", "Stopped"}:
+    power_state = properties.get("powerState")
+    expected_egress = entry.get("sandbox_egress") or {}
+    if power_state == "Stopped":
+        result.checks.append("live:stopped-egress-inactive")
+    else:
+        actual_egress = (properties.get("sandboxConfiguration") or {}).get("egress") or {}
+        normalized_egress = {
+            "mode": actual_egress.get("mode"),
+            "allowed_hosts": actual_egress.get("allowedHosts") or [],
+            "allowed_registries": actual_egress.get("allowedRegistries") or [],
+            "allowed_code_repositories": actual_egress.get("allowedCodeRepositories") or [],
+            "allow_http_mcp_server_network_access": actual_egress.get(
+                "allowHttpMcpServerNetworkAccess"
+            ),
+        }
+        if normalized_egress != expected_egress:
+            result.errors.append("SRE Agent sandbox egress differs from the restricted contract")
+        else:
+            result.checks.append("live:restricted-egress")
+
+    if power_state not in {"Running", "Stopped"}:
         result.errors.append("SRE Agent has no recognized lifecycle power state")
     else:
         result.checks.append("live:lifecycle-state")
@@ -388,32 +408,35 @@ def _check_sre_platform(
     if identity_rbac_ok:
         result.checks.append("live:exact-identity-rbac")
 
-    operator_principal_id = context.get("operator_principal_id")
-    operator_assignments = assignments.get(str(operator_principal_id)) if operator_principal_id else None
-    expected_operator_role = str(rbac["operator_role_definition_id"]).lower()
-    if operator_assignments is None:
-        result.errors.append("SRE operator group is missing or its role assignments could not be read")
+    if power_state == "Stopped":
+        result.checks.append("live:stopped-no-operator-required")
     else:
-        forbidden_operator_roles = {
-            str(role_id).lower() for role_id in rbac["forbidden_operator_role_definition_ids"]
-        }
-        relevant_operator_assignments = [
-            assignment
-            for assignment in operator_assignments
-            if _scope_applies_to_resource(assignment.get("scope"), resource.get("id"))
-            or _role_definition_id(assignment) in forbidden_operator_roles
-        ]
-        expected_operator_assignment = {
-            (
-                expected_operator_role,
-                _normalize_resource_id(resource.get("id")),
-                "group",
-            )
-        }
-        if _assignment_contract(relevant_operator_assignments) != expected_operator_assignment:
-            result.errors.append("SRE operator group must have only Standard User at the exact agent scope")
+        operator_principal_id = context.get("operator_principal_id")
+        operator_assignments = assignments.get(str(operator_principal_id)) if operator_principal_id else None
+        expected_operator_role = str(rbac["operator_role_definition_id"]).lower()
+        if operator_assignments is None:
+            result.errors.append("SRE operator group is missing or its role assignments could not be read")
         else:
-            result.checks.append("live:operator-standard-user")
+            forbidden_operator_roles = {
+                str(role_id).lower() for role_id in rbac["forbidden_operator_role_definition_ids"]
+            }
+            relevant_operator_assignments = [
+                assignment
+                for assignment in operator_assignments
+                if _scope_applies_to_resource(assignment.get("scope"), resource.get("id"))
+                or _role_definition_id(assignment) in forbidden_operator_roles
+            ]
+            expected_operator_assignment = {
+                (
+                    expected_operator_role,
+                    _normalize_resource_id(resource.get("id")),
+                    "group",
+                )
+            }
+            if _assignment_contract(relevant_operator_assignments) != expected_operator_assignment:
+                result.errors.append("SRE operator group must have only Standard User at the exact agent scope")
+            else:
+                result.checks.append("live:operator-standard-user")
 
 
 def _check_live_platform(

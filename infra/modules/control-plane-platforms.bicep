@@ -89,6 +89,16 @@ resource sreAgent 'Microsoft.App/agents@2026-01-01' = if (deploySreAgent) {
         connectionString: applicationInsights.properties.ConnectionString
       }
     }
+    #disable-next-line BCP037
+    sandboxConfiguration: {
+      egress: {
+        mode: 'Limited'
+        allowedHosts: []
+        allowedRegistries: []
+        allowedCodeRepositories: []
+        allowHttpMcpServerNetworkAccess: false
+      }
+    }
     upgradeChannel: 'Stable'
   }
 }
