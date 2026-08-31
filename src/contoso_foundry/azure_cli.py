@@ -15,6 +15,7 @@ from typing import Any
 #: Verbs that mutate Azure. Any command using one must pass ``allow_write=True``,
 #: which the ownership-boundary check gates on.
 _WRITE_VERBS = frozenset({"create", "delete", "update", "set", "add", "remove", "purge"})
+_WRITE_REST_METHODS = frozenset({"delete", "patch", "post", "put"})
 
 
 class AzureCliError(RuntimeError):
@@ -46,11 +47,21 @@ def run(args: list[str], *, allow_write: bool = False, timeout: int = 300) -> An
     Refuses mutating verbs unless ``allow_write`` is explicitly set, so an
     accidental ``create`` cannot slip through a discovery code path.
     """
+    rest_method = ""
+    if args and args[0] == "rest":
+        for index, argument in enumerate(args):
+            if argument in {"--method", "-m"} and index + 1 < len(args):
+                rest_method = args[index + 1].casefold()
+                break
+            if argument.startswith("--method="):
+                rest_method = argument.partition("=")[2].casefold()
+                break
     if not allow_write:
         offending = _WRITE_VERBS.intersection(args)
-        if offending:
+        if offending or rest_method in _WRITE_REST_METHODS:
             raise AzureCliError(
-                f"refusing to run a mutating az command from a read-only call site: {sorted(offending)}"
+                "refusing to run a mutating az command from a read-only call site: "
+                f"{sorted(offending) or [f'rest:{rest_method}']}"
             )
     launcher = executable()
     if launcher is None:
