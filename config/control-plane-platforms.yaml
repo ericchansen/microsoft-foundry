@@ -16,6 +16,12 @@ platforms:
     user_assigned_identity_name: contoso-agents-sre
     application_insights_name: contoso-agents-insights
     operator_group_principal_environment: SRE_OPERATOR_GROUP_OBJECT_ID
+    sandbox_egress:
+      mode: Limited
+      allowed_hosts: []
+      allowed_registries: []
+      allowed_code_repositories: []
+      allow_http_mcp_server_network_access: false
     rbac:
       resource_group_role_definition_ids:
         - acdd72a7-3385-48ef-bd42-f606fba81ae7

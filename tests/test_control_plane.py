@@ -61,6 +61,15 @@ def sre_resource(config):
                     "connectionString": "redacted",
                 }
             },
+            "sandboxConfiguration": {
+                "egress": {
+                    "mode": "Limited",
+                    "allowedHosts": [],
+                    "allowedRegistries": [],
+                    "allowedCodeRepositories": [],
+                    "allowHttpMcpServerNetworkAccess": False,
+                }
+            },
         },
     }
 
@@ -456,6 +465,28 @@ def test_sre_requires_operator_group(monkeypatch, config):
     assert "SRE operator group is missing or its role assignments could not be read" in sre.errors
 
 
+def test_stopped_sre_does_not_require_operator_or_active_egress(monkeypatch, config):
+    resources = live_resources(config)
+    sre_resource = resources["contoso-agents-sre-control-plane"]
+    sre_resource["properties"]["powerState"] = "Stopped"
+    sre_resource["properties"]["sandboxConfiguration"] = {
+        "egress": {"mode": "Unrestricted"}
+    }
+    monkeypatch.delenv("SRE_OPERATOR_GROUP_OBJECT_ID")
+    assignments = expected_role_assignments(config)
+    assignments.pop("operator-group-principal")
+    install_live_azure(
+        monkeypatch,
+        config,
+        resources=resources,
+        assignments=assignments,
+    )
+    sre = platform_result(control_plane.verify(config, include_optional=True), "contoso-sre")
+    assert sre.ok
+    assert "live:stopped-egress-inactive" in sre.checks
+    assert "live:stopped-no-operator-required" in sre.checks
+
+
 def test_sre_must_use_the_shared_application_insights(monkeypatch, config):
     resources = live_resources(config)
     resources["contoso-agents-insights"]["properties"]["AppId"] = "different"
@@ -463,6 +494,17 @@ def test_sre_must_use_the_shared_application_insights(monkeypatch, config):
     sre = platform_result(control_plane.verify(config, include_optional=True), "contoso-sre")
     assert not sre.ok
     assert "SRE Agent is not connected to the exact shared Application Insights resource" in sre.errors
+
+
+def test_sre_rejects_unrestricted_sandbox_egress(monkeypatch, config):
+    resources = live_resources(config)
+    resources["contoso-agents-sre-control-plane"]["properties"][
+        "sandboxConfiguration"
+    ] = {"egress": {"mode": "Unrestricted"}}
+    install_live_azure(monkeypatch, config, resources=resources)
+    sre = platform_result(control_plane.verify(config, include_optional=True), "contoso-sre")
+    assert not sre.ok
+    assert "SRE Agent sandbox egress differs from the restricted contract" in sre.errors
 
 
 def test_logic_apps_observability_is_explicitly_unsupported(config):
