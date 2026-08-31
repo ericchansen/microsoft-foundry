@@ -12,6 +12,7 @@ from contoso_foundry.field.register import (
     RegistrationError,
     validate_registration_target,
     verify_live_telemetry,
+    verify_registration_readback,
 )
 
 PROJECT_ENDPOINT = (
@@ -155,6 +156,132 @@ def test_registration_requires_explicit_write_authorization(monkeypatch) -> None
         )
 
 
+def test_registration_verifies_sdk_readback(monkeypatch) -> None:
+    class Agents:
+        def create_version(self, **kwargs):
+            assert kwargs["agent_name"] == "contoso-field"
+            assert kwargs["definition"].otel_agent_id == "contoso-field-v1"
+            return SimpleNamespace(
+                agent_guid="agent-id",
+                id="version-id",
+                name="contoso-field",
+                version="1",
+            )
+
+        def get_version(self, *, agent_name, agent_version):
+            assert agent_name == "contoso-field"
+            assert agent_version == "1"
+            return SimpleNamespace(
+                name=agent_name,
+                agent_guid="agent-id",
+                id="version-id",
+                version="1",
+                definition=SimpleNamespace(otel_agent_id="contoso-field-v1"),
+            )
+
+    monkeypatch.setattr(register, "DefaultAzureCredential", lambda **_kwargs: object())
+    monkeypatch.setattr(
+        register,
+        "AIProjectClient",
+        lambda **kwargs: (
+            SimpleNamespace(agents=Agents())
+            if kwargs["allow_preview"] is True
+            else (_ for _ in ()).throw(AssertionError("preview must be enabled"))
+        ),
+    )
+
+    readback = register.register_external_agent(
+        project_endpoint=PROJECT_ENDPOINT,
+        agent_name="contoso-field",
+        otel_agent_id="contoso-field-v1",
+        client_id=None,
+        allow_write=True,
+    )
+
+    assert readback.name == "contoso-field"
+    assert readback.agent_id == "agent-id"
+    assert readback.version == "1"
+    assert readback.version_id == "version-id"
+    assert readback.otel_agent_id == "contoso-field-v1"
+
+
+@pytest.mark.parametrize(
+    ("registered", "message"),
+    [
+        (
+            SimpleNamespace(
+                name="wrong",
+                agent_guid="agent-id",
+                id="version-id",
+                version="1",
+                definition=SimpleNamespace(otel_agent_id="contoso-field-v1"),
+            ),
+            "readback name",
+        ),
+        (
+            SimpleNamespace(
+                name="contoso-field",
+                agent_guid="agent-id",
+                id="version-id",
+                version="1",
+                definition=SimpleNamespace(otel_agent_id="wrong"),
+            ),
+            "OpenTelemetry ID",
+        ),
+        (
+            SimpleNamespace(
+                agent_guid="agent-id",
+                id="version-id",
+                name="contoso-field",
+                version="2",
+                definition=SimpleNamespace(otel_agent_id="contoso-field-v1"),
+            ),
+            "readback version",
+        ),
+        (
+            SimpleNamespace(
+                agent_guid="wrong-agent-id",
+                id="version-id",
+                name="contoso-field",
+                version="1",
+                definition=SimpleNamespace(otel_agent_id="contoso-field-v1"),
+            ),
+            "readback agent ID",
+        ),
+        (
+            SimpleNamespace(
+                agent_guid="agent-id",
+                id="wrong-version-id",
+                name="contoso-field",
+                version="1",
+                definition=SimpleNamespace(otel_agent_id="contoso-field-v1"),
+            ),
+            "readback version ID",
+        ),
+        (
+            SimpleNamespace(
+                agent_guid="",
+                id="",
+                name="contoso-field",
+                version="",
+                definition=SimpleNamespace(otel_agent_id="contoso-field-v1"),
+            ),
+            "omitted its agent or version identity",
+        ),
+    ],
+)
+def test_registration_rejects_invalid_sdk_readback(registered, message) -> None:
+    with pytest.raises(RegistrationError, match=message):
+        verify_registration_readback(
+            registered,
+            expected_name="contoso-field",
+            expected_otel_agent_id="contoso-field-v1",
+            expected_agent_id="agent-id",
+            expected_version="1",
+            expected_version_id="version-id",
+        )
+
+
 def test_registration_target_is_derived_from_the_boundary(repo_root) -> None:
     plan = register.boundary.load_plan(repo_root / "config" / "boundary.yaml")
     validate_registration_target(
@@ -172,7 +299,7 @@ def test_registration_target_is_derived_from_the_boundary(repo_root) -> None:
         )
 
 
-def test_main_orders_boundary_telemetry_and_explicit_registration(monkeypatch, repo_root) -> None:
+def test_main_verifies_without_registering_by_default(monkeypatch, repo_root) -> None:
     order: list[str] = []
     monkeypatch.setattr(
         register.boundary,
@@ -194,12 +321,11 @@ def test_main_orders_boundary_telemetry_and_explicit_registration(monkeypatch, r
         or SimpleNamespace(total_spans=5),
     )
 
-    def fake_register(**kwargs):
-        assert kwargs["allow_write"] is True
-        order.append("register")
-        return SimpleNamespace(name="contoso-field")
-
-    monkeypatch.setattr(register, "register_external_agent", fake_register)
+    monkeypatch.setattr(
+        register,
+        "register_external_agent",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("registration must not run")),
+    )
     result = register.main(
         [
             "--project-endpoint",
@@ -227,5 +353,87 @@ def test_main_orders_boundary_telemetry_and_explicit_registration(monkeypatch, r
         "boundary:optional-control-plane",
         "query",
         "verify",
+    ]
+
+
+def test_main_registers_only_after_explicit_confirmation(monkeypatch, repo_root) -> None:
+    order: list[str] = []
+    monkeypatch.setattr(
+        register.boundary,
+        "require_clean_live",
+        lambda _path, *, enabled_modules: (
+            order.append(f"boundary:{','.join(sorted(enabled_modules))}")
+            or SimpleNamespace(resource_group="rg-contoso-agents")
+        ),
+    )
+    monkeypatch.setattr(
+        register,
+        "query_live_telemetry",
+        lambda **_kwargs: order.append("query") or payload(5, 5, ["contoso-field-v1"]),
+    )
+    monkeypatch.setattr(
+        register,
+        "verify_live_telemetry",
+        lambda *_args, **_kwargs: order.append("verify")
+        or SimpleNamespace(total_spans=5),
+    )
+
+    def fake_register(**kwargs):
+        assert kwargs["allow_write"] is True
+        order.append("register")
+        return SimpleNamespace(name="contoso-field", version="1")
+
+    monkeypatch.setattr(register, "register_external_agent", fake_register)
+    result = register.main(
+        [
+            "--project-endpoint",
+            PROJECT_ENDPOINT,
+            "--resource-group",
+            "rg-contoso-agents",
+            "--app-insights",
+            "contoso-agents-insights",
+            "--boundary-config",
+            str(repo_root / "config" / "boundary.yaml"),
+            "--confirm-resource-group",
+            "rg-contoso-agents",
+            "--enable-module",
+            "optional-control-plane",
+            "--smoke-correlation-id",
+            "smoke-1",
+            "--smoke-started-at",
+            "2026-08-25T02:30:00Z",
+            "--container-app-revision",
+            "contoso-field--rev-1",
+            "--register",
+            "--confirm-registration",
+            "contoso-field",
+        ]
+    )
+    assert result == 0
+    assert order == [
+        "boundary:optional-control-plane",
+        "query",
+        "verify",
         "register",
     ]
+
+
+def test_main_rejects_registration_without_exact_confirmation(repo_root) -> None:
+    with pytest.raises(SystemExit):
+        register.main(
+            [
+                "--project-endpoint",
+                PROJECT_ENDPOINT,
+                "--boundary-config",
+                str(repo_root / "config" / "boundary.yaml"),
+                "--confirm-resource-group",
+                "rg-contoso-agents",
+                "--smoke-correlation-id",
+                "smoke-1",
+                "--smoke-started-at",
+                "2026-08-25T02:30:00Z",
+                "--container-app-revision",
+                "contoso-field--rev-1",
+                "--register",
+            ]
+        )

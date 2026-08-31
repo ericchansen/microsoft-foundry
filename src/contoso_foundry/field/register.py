@@ -47,6 +47,15 @@ class LiveTelemetryEvidence:
     container_app_revisions: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class ExternalAgentReadback:
+    name: str
+    agent_id: str
+    version: str
+    version_id: str
+    otel_agent_id: str
+
+
 def _table_row(payload: dict[str, Any]) -> dict[str, Any]:
     tables = payload.get("tables", [])
     if not tables or not tables[0].get("rows"):
@@ -175,7 +184,7 @@ def register_external_agent(
     otel_agent_id: str,
     client_id: str | None,
     allow_write: bool = False,
-) -> Any:
+) -> ExternalAgentReadback:
     if not allow_write:
         raise RegistrationError("external-agent registration requires an explicit write authorization")
     credential = DefaultAzureCredential(managed_identity_client_id=client_id)
@@ -184,11 +193,75 @@ def register_external_agent(
         credential=credential,
         allow_preview=True,
     )
-    return project.agents.create_version(
+    created = project.agents.create_version(
         agent_name=agent_name,
         description="Read-only Contoso field-service agent hosted on Azure Container Apps.",
         definition=ExternalAgentDefinition(otel_agent_id=otel_agent_id),
     )
+    created_version = str(getattr(created, "version", "") or "")
+    created_name = str(getattr(created, "name", "") or "")
+    created_agent_id = str(getattr(created, "agent_guid", "") or "")
+    created_version_id = str(getattr(created, "id", "") or "")
+    if created_name != agent_name:
+        raise RegistrationError(
+            f"registration create response name {created_name!r} does not match {agent_name!r}"
+        )
+    if not created_agent_id or not created_version or not created_version_id:
+        raise RegistrationError("registration create response omitted its agent or version identity")
+    return verify_registration_readback(
+        project.agents.get_version(
+            agent_name=agent_name,
+            agent_version=created_version,
+        ),
+        expected_name=agent_name,
+        expected_otel_agent_id=otel_agent_id,
+        expected_agent_id=created_agent_id,
+        expected_version=created_version,
+        expected_version_id=created_version_id,
+    )
+
+
+def verify_registration_readback(
+    registered: Any,
+    *,
+    expected_name: str,
+    expected_otel_agent_id: str,
+    expected_agent_id: str,
+    expected_version: str,
+    expected_version_id: str,
+) -> ExternalAgentReadback:
+    definition = getattr(registered, "definition", None)
+    readback = ExternalAgentReadback(
+        name=str(getattr(registered, "name", "") or ""),
+        agent_id=str(getattr(registered, "agent_guid", "") or ""),
+        version=str(getattr(registered, "version", "") or ""),
+        version_id=str(getattr(registered, "id", "") or ""),
+        otel_agent_id=str(getattr(definition, "otel_agent_id", "") or ""),
+    )
+    if readback.name != expected_name:
+        raise RegistrationError(
+            f"registration readback name {readback.name!r} does not match {expected_name!r}"
+        )
+    if readback.otel_agent_id != expected_otel_agent_id:
+        raise RegistrationError(
+            f"registration readback OpenTelemetry ID {readback.otel_agent_id!r} "
+            f"does not match {expected_otel_agent_id!r}"
+        )
+    if not readback.agent_id or not readback.version or not readback.version_id:
+        raise RegistrationError("registration readback omitted its agent or version identity")
+    if readback.agent_id != expected_agent_id:
+        raise RegistrationError(
+            f"registration readback agent ID {readback.agent_id!r} does not match the create response"
+        )
+    if readback.version != expected_version:
+        raise RegistrationError(
+            f"registration readback version {readback.version!r} does not match {expected_version!r}"
+        )
+    if readback.version_id != expected_version_id:
+        raise RegistrationError(
+            f"registration readback version ID {readback.version_id!r} does not match the create response"
+        )
+    return readback
 
 
 def validate_registration_target(
@@ -245,13 +318,26 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--smoke-correlation-id", required=True)
     parser.add_argument("--smoke-started-at", required=True)
     parser.add_argument("--container-app-revision", required=True)
+    parser.add_argument(
+        "--register",
+        action="store_true",
+        help="create the external-agent registration after all read-only gates pass",
+    )
+    parser.add_argument(
+        "--confirm-registration",
+        help="type the exact Field agent name to authorize --register",
+    )
     args = parser.parse_args(argv)
+    settings = FieldSettings.from_env()
     if not args.project_endpoint:
         parser.error("--project-endpoint or FOUNDRY_PROJECT_ENDPOINT is required")
     if args.confirm_resource_group != args.resource_group:
         parser.error("--confirm-resource-group must exactly match --resource-group")
+    if args.register and args.confirm_registration != settings.agent_name:
+        parser.error(f"--register requires --confirm-registration {settings.agent_name}")
+    if not args.register and args.confirm_registration:
+        parser.error("--confirm-registration is only valid with --register")
 
-    settings = FieldSettings.from_env()
     boundary_path = args.boundary_config.resolve()
     enabled_modules = set(args.enable_module) | boundary.enabled_modules_from_environment()
     try:
@@ -286,6 +372,13 @@ def main(argv: list[str] | None = None) -> int:
         smoke_correlation_id=args.smoke_correlation_id,
         container_app_revision=args.container_app_revision,
     )
+    if not args.register:
+        print(
+            f"verified {evidence.total_spans} live span(s), "
+            f"gen_ai.agent.id={settings.otel_agent_id}; registration not requested"
+        )
+        return 0
+
     registered = register_external_agent(
         project_endpoint=args.project_endpoint,
         agent_name=settings.agent_name,
@@ -294,7 +387,8 @@ def main(argv: list[str] | None = None) -> int:
         allow_write=True,
     )
     print(
-        f"registered {registered.name}: {evidence.total_spans} verified live span(s), "
+        f"registered {registered.name} version {registered.version}: "
+        f"{evidence.total_spans} verified live span(s), "
         f"gen_ai.agent.id={settings.otel_agent_id}"
     )
     return 0
