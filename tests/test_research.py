@@ -26,6 +26,7 @@ from contoso_foundry.research.request_context import (
     EVALUATION_USER_ROUTES,
     HostedIdentityError,
     load_trusted_user_routes,
+    resolve_fixed_request,
     resolve_trusted_request,
 )
 from contoso_foundry.research.runtime import build_runtime, runtime_from_environment
@@ -196,7 +197,7 @@ def test_host_ignores_forged_client_scope(monkeypatch) -> None:
 
     monkeypatch.setattr(ResponsesHostServer, "build_input", forged_base_input)
     server = object.__new__(ResearchResponsesHostServer)
-    server._trusted_user_routes = EVALUATION_USER_ROUTES
+    server._caller_route = "americas-supply-planner"
     context = SimpleNamespace(
         platform_context=SimpleNamespace(
             user_id_key="contoso-user-americas-support-lead",
@@ -206,8 +207,20 @@ def test_host_ignores_forged_client_scope(monkeypatch) -> None:
 
     graph_input = asyncio.run(server.build_input(object(), context))
 
-    assert graph_input["caller_route"] == "americas-support-lead"
+    assert graph_input["caller_route"] == "americas-supply-planner"
     assert graph_input["call_id"] == "platform-call"
+
+
+def test_fixed_host_route_requires_platform_identity_context() -> None:
+    context = SimpleNamespace(user_id_key="opaque-user", call_id="platform-call")
+    assert resolve_fixed_request(context, "americas-supply-planner").caller_route == (
+        "americas-supply-planner"
+    )
+    with pytest.raises(HostedIdentityError, match="identity"):
+        resolve_fixed_request(
+            SimpleNamespace(user_id_key="", call_id="platform-call"),
+            "americas-supply-planner",
+        )
 
 
 def test_concurrent_requests_keep_identity_results_and_audit_disjoint(runtime) -> None:
@@ -296,7 +309,7 @@ def test_hosted_configuration_routes_exact_versions(repo_root: Path) -> None:
 
     assert research["protocols"] == [{"protocol": "responses", "version": "2.0.0"}]
     assert research["agentEndpoint"]["versionSelector"]["versionSelectionRules"] == [
-        {"type": "FixedRatio", "agentVersion": "1", "trafficPercentage": 100}
+        {"type": "FixedRatio", "agentVersion": "4", "trafficPercentage": 100}
     ]
     assert "@latest" not in unified
     assert project["deployments"][0]["name"] == "gpt-5.4-mini-2026-03-17"
@@ -466,7 +479,7 @@ def test_hosted_runtime_rejects_wrong_platform_route(monkeypatch) -> None:
 
     monkeypatch.setenv("FOUNDRY_AGENT_NAME", AGENT_NAME)
     monkeypatch.setenv("CONTOSO_RESEARCH_HOSTED_VERSION", HOSTED_VERSION)
-    monkeypatch.setenv("FOUNDRY_AGENT_VERSION", "2")
+    monkeypatch.setenv("FOUNDRY_AGENT_VERSION", "999")
     with pytest.raises(RuntimeError, match="exact endpoint route"):
         _verify_hosted_route()
 
