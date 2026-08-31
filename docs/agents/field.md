@@ -72,7 +72,11 @@ Foundry matches an external registration to
 4. Record the smoke correlation ID, UTC start time and Container App revision.
 5. Query only the operation rooted at that correlated smoke span and require every
    observed Pydantic AI span to carry exactly `contoso-field-v1`.
-6. Create the external registration with `AIProjectClient(allow_preview=True)`.
+6. Run the registration command in its default verification-only mode.
+7. Create the external registration with `AIProjectClient(allow_preview=True)`
+   only after adding `--register --confirm-registration contoso-field`.
+8. Read the registration back through the SDK and require the name, agent ID,
+   version ID, version and OpenTelemetry ID to be present and exact.
 
 `MissingAgentIdSpanProcessor` is project glue, not a Pydantic AI feature. It
 touches only spans whose instrumentation scope is `pydantic-ai`, preserves an ID
@@ -126,4 +130,141 @@ an exact clean live ownership inventory, then queries spans newer than the
 supplied UTC start time for one correlation ID and Container App revision. Every
 span in that operation must carry exactly `contoso-field-v1`; only then does the
 explicit write-authorized SDK call create a version. Missing, stale, mixed, or
-uncorrelated evidence fails without mutation.
+uncorrelated evidence fails without mutation. The default command is read-only
+even after all gates pass. Registration requires both `--register` and the exact
+agent-name confirmation; the command then reads the new registration back and
+fails if its identity or `otel_agent_id` differs.
+
+## Presenter runbook
+
+Do not expose ingress or paste resolved endpoints, resource IDs, subscription
+IDs, connection strings or agent IDs into presenter output. Set
+`FOUNDRY_PROJECT_ENDPOINT` from the platform project's **Overview** page without
+echoing it.
+
+First require the exact live boundary and confirm that no resource-group
+deployment is active:
+
+```powershell
+$env:PYTHONPATH = Join-Path $PWD "src"
+python -m contoso_foundry.cli boundary --enable-module optional-control-plane
+$active = az deployment group list `
+  --resource-group rg-contoso-agents `
+  --query "[?properties.provisioningState=='Running' || properties.provisioningState=='Accepted'].name" `
+  -o tsv
+if ($active) { throw "A resource-group deployment is active." }
+```
+
+Stop if either check fails. A failed boundary is not permission to weaken the
+gate. With a healthy replica, generate the correlation values immediately before
+the canonical scenario and keep the JSON output in ignored `internal/`:
+
+```powershell
+$correlation = [guid]::NewGuid().ToString()
+$startedAt = (Get-Date).ToUniversalTime().ToString("o")
+$smokeRevision = az containerapp show `
+  --name contoso-field `
+  --resource-group rg-contoso-agents `
+  --query properties.latestReadyRevisionName `
+  -o tsv
+az containerapp exec `
+  --name contoso-field `
+  --resource-group rg-contoso-agents `
+  --revision $smokeRevision `
+  --command "python -m contoso_foundry.field.smoke --correlation-id $correlation" `
+  | Set-Content -Encoding utf8 internal\field-smoke.json
+```
+
+An internal app at zero replicas has no exec target. Only after the live boundary
+passes, use this bounded alternative. It captures the new revision created by
+the scale change, restores the exact prior minimum in a `finally` block, and
+waits for scale-to-zero:
+
+```powershell
+$previousMin = [int](az containerapp show `
+  --name contoso-field `
+  --resource-group rg-contoso-agents `
+  --query properties.template.scale.minReplicas `
+  -o tsv)
+$previousRevision = az containerapp show `
+  --name contoso-field `
+  --resource-group rg-contoso-agents `
+  --query properties.latestReadyRevisionName `
+  -o tsv
+if ($previousMin -ne 0) { throw "Expected the recorded minimum to be zero." }
+try {
+  az containerapp update `
+    --name contoso-field `
+    --resource-group rg-contoso-agents `
+    --min-replicas 1 | Out-Null
+  $readyDeadline = (Get-Date).AddMinutes(10)
+  do {
+    Start-Sleep -Seconds 5
+    $smokeRevision = az containerapp show `
+      --name contoso-field `
+      --resource-group rg-contoso-agents `
+      --query properties.latestReadyRevisionName `
+      -o tsv
+  } while (
+    (-not $smokeRevision -or $smokeRevision -eq $previousRevision) `
+      -and (Get-Date) -lt $readyDeadline
+  )
+  if (-not $smokeRevision -or $smokeRevision -eq $previousRevision) {
+    throw "The temporary revision did not become ready."
+  }
+
+  $correlation = [guid]::NewGuid().ToString()
+  $startedAt = (Get-Date).ToUniversalTime().ToString("o")
+  az containerapp exec `
+    --name contoso-field `
+    --resource-group rg-contoso-agents `
+    --revision $smokeRevision `
+    --command "python -m contoso_foundry.field.smoke --correlation-id $correlation" `
+    | Set-Content -Encoding utf8 internal\field-smoke.json
+}
+finally {
+  az containerapp update `
+    --name contoso-field `
+    --resource-group rg-contoso-agents `
+    --min-replicas $previousMin | Out-Null
+}
+
+$deadline = (Get-Date).AddMinutes(10)
+do {
+  Start-Sleep -Seconds 10
+  $replicaCount = @(
+    az containerapp replica list `
+      --name contoso-field `
+      --resource-group rg-contoso-agents `
+      -o json | ConvertFrom-Json
+  ).Count
+} while ($replicaCount -ne 0 -and (Get-Date) -lt $deadline)
+if ($replicaCount -ne 0) { throw "contoso-field did not scale back to zero." }
+```
+
+Public ingress is never an alternative.
+
+Verify fresh telemetry without registering:
+
+```powershell
+python -m contoso_foundry.field.register `
+  --project-endpoint $env:FOUNDRY_PROJECT_ENDPOINT `
+  --confirm-resource-group rg-contoso-agents `
+  --enable-module optional-control-plane `
+  --smoke-correlation-id $correlation `
+  --smoke-started-at $startedAt `
+  --container-app-revision $smokeRevision
+```
+
+The safe success shape reports a nonzero live span count, the exact
+`gen_ai.agent.id=contoso-field-v1`, and `registration not requested`. Only after
+reviewing that result, repeat the command with:
+
+```text
+--register --confirm-registration contoso-field
+```
+
+The registration success shape includes the read-back version but omits Azure
+resource and version IDs from console output. In the Foundry portal, open the
+platform project, select **Agents**, select **contoso-field**, then select
+**Traces**. Filter by the fresh smoke time and confirm the matching trace.
