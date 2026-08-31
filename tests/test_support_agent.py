@@ -72,7 +72,7 @@ def test_unified_config_uses_current_hosted_responses_contract() -> None:
     assert agent["protocols"] == [{"protocol": "responses", "version": "2.0.0"}]
     assert agent["agentEndpoint"]["authorizationSchemes"] == [{"type": "Entra"}]
     assert agent["agentEndpoint"]["versionSelector"]["versionSelectionRules"] == [
-        {"type": "FixedRatio", "agentVersion": "2", "trafficPercentage": 100}
+        {"type": "FixedRatio", "agentVersion": "4", "trafficPercentage": 100}
     ]
     assert config["services"]["support-project"]["endpoint"] == "${AZURE_AI_PROJECT_ENDPOINT}"
     assert agent["uses"] == ["support-project"]
@@ -113,7 +113,7 @@ def test_support_deployment_manifest_has_one_foundry_project() -> None:
     assert manifest["services"]["contoso-support"]["agentEndpoint"][
         "versionSelector"
     ]["versionSelectionRules"] == [
-        {"type": "FixedRatio", "agentVersion": "2", "trafficPercentage": 100}
+        {"type": "FixedRatio", "agentVersion": "4", "trafficPercentage": 100}
     ]
 
 

@@ -141,7 +141,9 @@ def build_workflow_agent() -> Agent:
         instructions=(
             "Review the investigation for unsupported claims, hidden-scope inference, unsafe disclosure, and "
             "unapproved mutation. Return only a concise evidence-grounded answer. If evidence or a dependency is "
-            "missing, fail closed and state that the request cannot be completed."
+            "missing, fail closed and state that the request cannot be completed. When the requested synthetic case "
+            "is visible, include its canonical case ID even when declining to draw a conclusion. If no case is "
+            "visible to the caller, return exactly UNAVAILABLE."
         ),
         default_options={"store": False},
     )
