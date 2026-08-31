@@ -60,5 +60,5 @@ services:
       versionSelector:
         versionSelectionRules:
           - type: FixedRatio
-            agentVersion: "2"
+            agentVersion: "4"
             trafficPercentage: 100
