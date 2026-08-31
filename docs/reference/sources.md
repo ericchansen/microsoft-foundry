@@ -1,7 +1,7 @@
 # Sources
 
 Every product, behaviour and pricing claim on this site traces to a first-party
-Microsoft page. All links were verified on **2026-08-31**.
+Microsoft page. All links were verified on **2026-09-01**.
 
 Where a capability is in **public preview** it is labelled as such wherever it
 appears. Preview features can change without notice; re-check the source before
@@ -15,6 +15,8 @@ relying on one.
 | Agent Service overview | <https://learn.microsoft.com/azure/foundry/agents/overview> |
 | Agent Service limits, quotas and regions | <https://learn.microsoft.com/azure/foundry/agents/concepts/limits-quotas-regions> |
 | Model quotas and limits | <https://learn.microsoft.com/azure/foundry/openai/quotas-limits> |
+| Foundry observability overview | <https://learn.microsoft.com/azure/foundry/observability/overview> |
+| Agent evaluation | <https://learn.microsoft.com/azure/foundry/observability/concept-agent-evaluation> |
 | Prompt agent quickstart | <https://learn.microsoft.com/azure/foundry/agents/quickstarts/prompt-agent> |
 | Prompt-agent OpenAPI tools and authentication | <https://learn.microsoft.com/azure/foundry/agents/how-to/tools/openapi> |
 | Client-side agent tracing | <https://learn.microsoft.com/azure/foundry/observability/how-to/trace-agent-client-side> |
@@ -32,8 +34,12 @@ relying on one.
 | Hosted runtime contract | <https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agent-contract> |
 | Foundry SDKs and project endpoint shape | <https://learn.microsoft.com/azure/foundry/how-to/develop/sdk-overview> |
 | LangGraph tracing | <https://learn.microsoft.com/azure/foundry/how-to/develop/langchain-traces> |
+| Foundry project roles and RBAC | <https://learn.microsoft.com/azure/foundry/concepts/rbac-foundry> |
+| Foundry Toolbox | <https://learn.microsoft.com/azure/foundry/agents/concepts/toolbox-overview> |
+| Foundry agent tracing setup | <https://learn.microsoft.com/azure/foundry/observability/how-to/trace-agent-setup> |
 | Foundry Models pricing | <https://azure.microsoft.com/pricing/details/foundry-models/> |
 | External-agent registration and limitations (public preview) | <https://learn.microsoft.com/azure/foundry/agents/how-to/register-external-agent> |
+| Foundry portal navigation | <https://learn.microsoft.com/azure/foundry/what-is-foundry> |
 
 Model quota is **subscription-level**, and Global Standard deployments draw from
 a single pool shared across regions. A region can therefore pass a model
@@ -63,6 +69,7 @@ after that identity exists and only at the resource it must access.
 | Gateway log schema | <https://learn.microsoft.com/azure/azure-monitor/reference/tables/apimanagementgatewaylogs> |
 | LLM token limits | <https://learn.microsoft.com/azure/api-management/llm-token-limit-policy> |
 | Import a Foundry API | <https://learn.microsoft.com/azure/api-management/azure-ai-foundry-api> |
+| AI Gateway capabilities | <https://learn.microsoft.com/azure/api-management/genai-gateway-capabilities> |
 
 The v2 tiers are available in a **narrower** set of regions than API Management
 itself. The region availability page is the authority, not the resource
@@ -118,6 +125,7 @@ meter. See [Cost model](../platform/costs.md).
 | Security | <https://learn.microsoft.com/azure/container-apps/security> |
 | Managed identities | <https://learn.microsoft.com/azure/container-apps/managed-identity> |
 | Scaling and scale-to-zero | <https://learn.microsoft.com/azure/container-apps/scale-app> |
+| Connect to a container console | <https://learn.microsoft.com/azure/container-apps/container-console> |
 
 There is no static region page. The documented method is to query the resource
 provider, which is what region selection does.
@@ -142,6 +150,14 @@ inventory, but their traces and metrics are explicitly unsupported.
 | Log Analytics cost calculations | <https://learn.microsoft.com/azure/azure-monitor/logs/cost-logs> |
 | Pricing | <https://azure.microsoft.com/pricing/details/monitor/> |
 | Azure Monitor OpenTelemetry configuration | <https://learn.microsoft.com/azure/azure-monitor/app/opentelemetry-configuration?tabs=python> |
+| Workspace-based Application Insights | <https://learn.microsoft.com/azure/azure-monitor/app/create-workspace-resource> |
+
+## Azure identity and data services
+
+| Topic | Source |
+| --- | --- |
+| Azure Identity client library for Python | <https://learn.microsoft.com/python/api/overview/azure/identity-readme> |
+| Azure Key Vault RBAC | <https://learn.microsoft.com/azure/key-vault/general/rbac-guide> |
 
 ## Azure Kubernetes Service
 
@@ -221,6 +237,7 @@ with conversation detail disabled, and Dataverse transcript saving is disabled.
 | `az cognitiveservices usage` | <https://learn.microsoft.com/cli/azure/cognitiveservices/usage> |
 | Azure Developer CLI hooks | <https://learn.microsoft.com/azure/developer/azure-developer-cli/azd-extensibility> |
 | List role assignments with Azure CLI | <https://learn.microsoft.com/azure/role-based-access-control/role-assignments-list-cli#list-role-assignments-for-a-subscription> |
+| Select an Azure subscription | <https://learn.microsoft.com/cli/azure/manage-azure-subscriptions-azure-cli> |
 
 ## Tooling
 
