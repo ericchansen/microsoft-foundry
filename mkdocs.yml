@@ -73,6 +73,7 @@ nav:
   - Home: index.md
   - Architecture:
       - Overview: architecture/overview.md
+      - Demo operator guide: demo-guide.md
   - Shared data and tools:
       - Data spine: data/overview.md
       - Provenance: data/provenance.md
