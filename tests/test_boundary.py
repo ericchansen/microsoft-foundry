@@ -156,6 +156,8 @@ class TestHappyPath:
             "projects/support/agents/contoso-support",
             "providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/"
             "projects/research/agents/contoso-research",
+            "providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/"
+            "projects/platform/agents/contoso-field",
         }
 
 
