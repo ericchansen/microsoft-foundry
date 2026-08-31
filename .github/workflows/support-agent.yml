@@ -26,17 +26,17 @@ jobs:
       id-token: write
     env:
       AZURE_RESOURCE_GROUP: rg-contoso-agents
-      BUDGET_CONTACT_EMAIL: ${{ vars.BUDGET_CONTACT_EMAIL }}
+      BUDGET_CONTACT_EMAIL: ${{ secrets.BUDGET_CONTACT_EMAIL }}
       CONFIRM_RESOURCE_GROUP: ${{ inputs.confirm_resource_group }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.13"
           cache: pip
 
-      - uses: Azure/setup-azd@v2
+      - uses: Azure/setup-azd@0b7e3a35ab00f2eee7080c845eb39c3f0ebfa553 # v2
 
       - name: Install project
         run: pip install -e ".[dev]"
@@ -53,17 +53,17 @@ jobs:
           foundry boundary --no-live
 
       - name: Azure login with workload identity federation
-        uses: azure/login@v2
+        uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2
         with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Authenticate azd and configure the deployment
         env:
-          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
-          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
-          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         run: |
           azd auth login \
             --client-id "$AZURE_CLIENT_ID" \
@@ -93,7 +93,7 @@ jobs:
               --api-version 2019-05-01 >/dev/null 2>&1; then
             optional_args+=(--enable-module optional-control-plane)
           fi
-          foundry boundary "${optional_args[@]}"
+          foundry boundary --deployment-readiness "${optional_args[@]}"
 
       - name: Refuse concurrent resource-group deployments
         run: |
@@ -178,3 +178,20 @@ jobs:
           done
           echo "No contoso-support GenAI spans arrived within 10 minutes." >&2
           exit 1
+
+      - name: Verify converged live boundary
+        run: |
+          optional_args=()
+          if az resource show \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --resource-type Microsoft.App/agents \
+            --name contoso-agents-sre-control-plane \
+            --api-version 2026-01-01 >/dev/null 2>&1 ||
+            az resource show \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --resource-type Microsoft.Logic/workflows \
+              --name contoso-agents-approvals-loop \
+              --api-version 2019-05-01 >/dev/null 2>&1; then
+            optional_args+=(--enable-module optional-control-plane)
+          fi
+          foundry boundary "${optional_args[@]}"

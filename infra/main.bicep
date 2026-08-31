@@ -16,11 +16,12 @@ param projectNames array = [
   'platform'
 ]
 
-@description('GitHub owner/repository allowed to request the deployment identity.')
-param githubRepository string = 'ericchansen/microsoft-foundry'
-
 @description('Protected GitHub environment allowed to request the deployment identity.')
 param githubEnvironment string = 'contoso-agents'
+
+@description('Exact GitHub OIDC subject configured by the repository or organization.')
+@secure()
+param githubOidcSubject string
 
 @description('Email recipients for the action group and mandatory budget alerts.')
 @minLength(1)
@@ -237,8 +238,8 @@ module identities 'modules/identity.bicep' = {
     location: location
     resourcePrefix: resourcePrefix
     tags: tags
-    githubRepository: githubRepository
     githubEnvironment: githubEnvironment
+    githubOidcSubject: githubOidcSubject
     foundryAccountName: foundryAccount.name
     foundryProjectName: 'support'
   }

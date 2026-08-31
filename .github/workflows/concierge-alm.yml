@@ -38,16 +38,16 @@ jobs:
   contract:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Require workflow implementation from main
         run: test "$GITHUB_REF" = "refs/heads/main"
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.13"
           cache: pip
       - run: pip install -e ".[dev]"
       - run: pytest -q tests/test_concierge_alm.py
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: "10.0.x"
       - name: Restore pinned repository-local PAC CLI
@@ -75,7 +75,7 @@ jobs:
     needs: contract
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Require an authorized complete DEV export
         shell: pwsh
         run: ./scripts/concierge-alm.ps1 -Operation AssertReleaseSource
@@ -92,8 +92,8 @@ jobs:
       attestations: write
       id-token: write
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: "10.0.x"
       - run: dotnet tool restore
@@ -137,11 +137,11 @@ jobs:
             --path "artifacts/$MANAGED_ARTIFACT" \
             --managed true
       - name: Attest managed release provenance
-        uses: actions/attest@v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-path: artifacts/${{ env.MANAGED_ARTIFACT }}
       - name: Retain immutable managed release
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ env.MANAGED_ARTIFACT_NAME }}
           path: artifacts/${{ env.MANAGED_ARTIFACT }}
@@ -154,8 +154,8 @@ jobs:
     runs-on: ubuntu-latest
     environment: concierge-test
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: "10.0.x"
       - run: dotnet tool restore
@@ -212,8 +212,8 @@ jobs:
       attestations: write
       id-token: write
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.13"
           cache: pip
@@ -237,11 +237,11 @@ jobs:
             --suite config/concierge/delegation-tests.yaml \
             --url "$CONCIERGE_TEST_HARNESS_URL"
       - name: Attest TEST-accepted package
-        uses: actions/attest@v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-path: artifacts/${{ env.MANAGED_ARTIFACT }}
       - name: Retain TEST-accepted package for PROD
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ env.ACCEPTED_ARTIFACT_NAME }}
           path: artifacts/${{ env.MANAGED_ARTIFACT }}
@@ -254,8 +254,8 @@ jobs:
     runs-on: ubuntu-latest
     environment: concierge-prod-approval
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: "10.0.x"
       - run: dotnet tool restore

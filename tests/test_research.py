@@ -331,19 +331,21 @@ def test_deployment_target_is_derived_from_relative_boundary(repo_root: Path) ->
 def test_predeploy_requires_a_clean_live_boundary(repo_root: Path, monkeypatch) -> None:
     observed = {}
 
-    def reject_boundary(path, *, enabled_modules):
-        observed["path"] = path
+    def reject_boundary(report, _plan, *, enabled_modules, allow_missing_declared):
         observed["enabled_modules"] = enabled_modules
-        raise PermissionError("undeclared live resource")
+        observed["allow_missing_declared"] = allow_missing_declared
+        report.fail("live:test", "resource", "undeclared live resource")
+        return report
 
-    monkeypatch.setattr("contoso_foundry.research.deployment.require_clean_live", reject_boundary)
+    monkeypatch.setattr("contoso_foundry.research.deployment.check_live", reject_boundary)
     with pytest.raises(DeploymentBoundaryError, match="live ownership boundary"):
         require_clean_live_boundary(
             repo_root / "config" / "boundary.yaml",
             enabled_modules={"optional-control-plane"},
+            deployment_readiness=True,
         )
-    assert observed["path"] == repo_root / "config" / "boundary.yaml"
     assert observed["enabled_modules"] == {"optional-control-plane"}
+    assert observed["allow_missing_declared"] is True
 
 
 def test_deployment_rejects_endpoint_outside_declared_project(
