@@ -183,6 +183,12 @@ def cmd_costs(args: argparse.Namespace) -> int:
 
 
 def cmd_boundary(args: argparse.Namespace) -> int:
+    if args.deployment_readiness and args.no_live:
+        print(
+            "--deployment-readiness requires live inventory and cannot be combined with --no-live",
+            file=sys.stderr,
+        )
+        return 2
     plan = boundary_mod.load_plan(Path(args.config) / "boundary.yaml")
     report = boundary_mod.check_plan(plan)
     if not args.no_live:
@@ -190,6 +196,7 @@ def cmd_boundary(args: argparse.Namespace) -> int:
             report,
             plan,
             enabled_modules=args.enable_module,
+            allow_missing_declared=args.deployment_readiness,
         )
 
     _write(Path(args.internal) / "boundary.json", boundary_mod.to_json(report))
@@ -526,6 +533,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("boundary", help="validate that everything mutable stays in one resource group")
     p.add_argument("--no-live", action="store_true", help="static checks only")
+    p.add_argument(
+        "--deployment-readiness",
+        action="store_true",
+        help="allow declared resources and roles to be absent while still rejecting undeclared live state",
+    )
     p.add_argument(
         "--enable-module",
         action="append",

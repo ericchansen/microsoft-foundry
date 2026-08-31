@@ -19,7 +19,9 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
+import requests
 import yaml
 
 from . import azure_cli
@@ -152,6 +154,185 @@ def _scope_matches(scope: str, pattern: str) -> bool:
     return re.fullmatch(expression, scope) is not None
 
 
+def _arm_url(subscription_id: str, resource_group: str, relative_scope: str, api_version: str) -> str:
+    return (
+        f"https://management.azure.com/subscriptions/{subscription_id}"
+        f"/resourceGroups/{resource_group}/{relative_scope}"
+        f"?api-version={api_version}"
+    )
+
+
+def _expand_inventory_scope(
+    pattern: str,
+    live_resources: dict[str, dict[str, Any]],
+) -> list[str]:
+    if "*" not in pattern and "?" not in pattern:
+        return [pattern]
+    segments = pattern.split("/")
+    wildcard_index = next(
+        index
+        for index, segment in enumerate(segments)
+        if "*" in segment or "?" in segment
+    )
+    parent_pattern = "/".join(segments[: wildcard_index + 1])
+    suffix = segments[wildcard_index + 1 :]
+    return [
+        "/".join([scope, *suffix])
+        for scope in live_resources
+        if len(scope.split("/")) == wildcard_index + 1
+        and _scope_matches(scope, parent_pattern)
+    ]
+
+
+def _augment_declared_inventory(
+    report: BoundaryReport,
+    plan: dict[str, Any],
+    live_resources: dict[str, dict[str, Any]],
+) -> None:
+    """Read ARM children omitted by ``az resource list`` and data-plane agents."""
+    arm_entries = [
+        entry
+        for section in ("resources", "identities")
+        for entry in plan.get(section, []) or []
+        if entry.get("inventory_api_version")
+    ]
+    if arm_entries:
+        account = azure_cli.run(["account", "show"]) or {}
+        subscription_id = str(account.get("id", "")).strip()
+        if not subscription_id:
+            raise azure_cli.AzureCliError("Azure CLI returned no subscription ID")
+        queried_collections: set[str] = set()
+        for entry in arm_entries:
+            api_version = str(entry["inventory_api_version"])
+            collection = str(entry.get("inventory_collection", "")).strip().lower()
+            scope = str(entry.get("scope", "")).strip().lower()
+            query_scopes = _expand_inventory_scope(collection or scope, live_resources)
+            for query_scope in query_scopes:
+                if collection and query_scope in queried_collections:
+                    continue
+                queried_collections.add(query_scope)
+                next_url = _arm_url(
+                    subscription_id,
+                    report.resource_group,
+                    query_scope,
+                    api_version,
+                )
+                visited_urls: set[str] = set()
+                while next_url:
+                    if next_url in visited_urls:
+                        raise ValueError(f"{query_scope}: ARM inventory pagination loop")
+                    visited_urls.add(next_url)
+                    parsed = urlparse(next_url)
+                    expected_prefix = (
+                        f"/subscriptions/{subscription_id}/resourcegroups/"
+                        f"{report.resource_group}/"
+                    ).lower()
+                    if (
+                        parsed.scheme != "https"
+                        or parsed.netloc.lower() != "management.azure.com"
+                        or not parsed.path.lower().startswith(expected_prefix)
+                    ):
+                        raise ValueError(
+                            f"{query_scope}: ARM inventory continuation left the owned resource group"
+                        )
+                    payload = azure_cli.run(
+                        [
+                            "rest",
+                            "--method",
+                            "get",
+                            "--url",
+                            next_url,
+                        ]
+                    )
+                    resources = (
+                        payload.get("value", [])
+                        if isinstance(payload, dict) and "value" in payload
+                        else [payload]
+                    )
+                    for resource in resources:
+                        if isinstance(resource, dict) and resource.get("id"):
+                            live_resources[
+                                _relative_live_scope(
+                                    str(resource["id"]),
+                                    report.resource_group,
+                                )
+                            ] = resource
+                    next_url = (
+                        str(payload.get("nextLink", "")).strip()
+                        if isinstance(payload, dict)
+                        else ""
+                    )
+
+    data_plane_agents = [
+        entry
+        for entry in plan.get("resources", []) or []
+        if entry.get("inventory_data_plane") == "foundry_agent"
+    ]
+    if not data_plane_agents:
+        return
+    token_payload = azure_cli.run(
+        ["account", "get-access-token", "--scope", "https://ai.azure.com/.default"]
+    ) or {}
+    token = str(token_payload.get("accessToken", ""))
+    if not token:
+        raise azure_cli.AzureCliError("Azure CLI returned no Foundry access token")
+    queried_projects: set[tuple[str, str]] = set()
+    for entry in data_plane_agents:
+        scope = str(entry.get("scope", "")).strip().lower()
+        match = re.fullmatch(
+            r"providers/microsoft\.cognitiveservices/accounts/([^/]+)/projects/([^/]+)/agents/([^/]+)",
+            scope,
+        )
+        if not match:
+            raise ValueError(f"{entry.get('name')}: invalid Foundry agent inventory scope")
+        account_name, project_name, _agent_name = match.groups()
+        project_key = (account_name, project_name)
+        if project_key in queried_projects:
+            continue
+        queried_projects.add(project_key)
+        after = ""
+        seen_continuations: set[str] = set()
+        while True:
+            params = {"api-version": "v1", "limit": 100}
+            if after:
+                params["after"] = after
+            response = requests.get(
+                (
+                    f"https://{account_name}.services.ai.azure.com/api/projects/"
+                    f"{project_name}/agents"
+                ),
+                params=params,
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=30,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            agents = payload.get("data", [])
+            if not isinstance(agents, list):
+                raise ValueError("Foundry returned an invalid agent collection")
+            for agent in agents:
+                agent_name = str(agent.get("name", "")).strip().lower()
+                if not agent_name:
+                    raise ValueError("Foundry returned an agent without a name")
+                agent_scope = (
+                    "providers/microsoft.cognitiveservices/accounts/"
+                    f"{account_name}/projects/{project_name}/agents/{agent_name}"
+                )
+                live_resources[agent_scope] = {
+                    "id": f"/resourceGroups/{report.resource_group}/{agent_scope}",
+                    "type": "Microsoft.CognitiveServices/accounts/projects/agents",
+                    "name": agent_name,
+                }
+            if not payload.get("has_more"):
+                break
+            after = str(payload.get("last_id", "")).strip()
+            if not after:
+                raise ValueError("Foundry agent collection omitted its continuation ID")
+            if after in seen_continuations:
+                raise ValueError("Foundry agent collection repeated its continuation ID")
+            seen_continuations.add(after)
+
+
 def _principal_id(resource: dict[str, Any]) -> str | None:
     identity = resource.get("identity") or {}
     properties = resource.get("properties") or {}
@@ -170,6 +351,8 @@ def _check_live_role_assignments(
     plan: dict[str, Any],
     live_resources: dict[str, dict[str, Any]],
     assignments: list[dict[str, Any]],
+    *,
+    require_declared: bool = True,
 ) -> None:
     declared_entries = {
         str(entry.get("name")): str(entry.get("scope", "")).lower()
@@ -177,16 +360,28 @@ def _check_live_role_assignments(
         if section in {"resources", "identities"}
     }
     expected: dict[tuple[str, str, str], str] = {}
+    required_expected: set[tuple[str, str, str]] = set()
     principal_aliases: dict[str, str] = {}
     external_principals: dict[str, str] = {}
+    unresolved_external_principals: set[str] = set()
     for entry in plan.get("external_principals", []) or []:
         alias = str(entry.get("name", ""))
         environment_name = str(entry.get("object_id_environment", ""))
         principal_id = os.environ.get(environment_name, "").strip().lower()
-        if not alias or not principal_id:
+        if not alias:
             report.fail(
                 "live:declared-role-assignments",
-                alias or "<unnamed-external-principal>",
+                "<unnamed-external-principal>",
+                "external principal must declare a name",
+            )
+            continue
+        if not principal_id:
+            if entry.get("required_live") is False:
+                unresolved_external_principals.add(alias)
+                continue
+            report.fail(
+                "live:declared-role-assignments",
+                alias,
                 "external principal object ID was not supplied by its declared environment variable",
             )
             continue
@@ -197,9 +392,13 @@ def _check_live_role_assignments(
         principal_alias = str(assignment.get("principal", ""))
         external_principal_id = external_principals.get(principal_alias)
         principal_pattern = declared_entries.get(principal_alias)
+        if (
+            principal_alias in unresolved_external_principals
+            and assignment.get("required_live") is False
+        ):
+            continue
         if external_principal_id:
-            principal_id = external_principal_id
-            principal_aliases[principal_id] = principal_alias
+            principal_ids = {external_principal_id}
         elif not principal_pattern:
             report.fail(
                 "live:declared-role-assignments",
@@ -213,14 +412,19 @@ def _check_live_role_assignments(
                 for scope, resource in live_resources.items()
                 if _scope_matches(scope, principal_pattern) and (principal := _principal_id(resource))
             }
-            if len(matching_principals) != 1:
+            if not matching_principals and (
+                assignment.get("required_live") is False or not require_declared
+            ):
+                continue
+            if len(matching_principals) != 1 and require_declared:
                 report.fail(
                     "live:declared-role-assignments",
                     assignment_name,
                     f"principal {principal_alias!r} resolved to {len(matching_principals)} live principal IDs",
                 )
                 continue
-            principal_id = next(iter(matching_principals))
+            principal_ids = matching_principals
+        for principal_id in principal_ids:
             principal_aliases[principal_id] = principal_alias
 
         scope_pattern = str(assignment.get("scope", "")).lower()
@@ -229,6 +433,10 @@ def _check_live_role_assignments(
             if scope_pattern == "."
             else {scope for scope in live_resources if _scope_matches(scope, scope_pattern)}
         )
+        if not matching_scopes and (
+            assignment.get("required_live") is False or not require_declared
+        ):
+            continue
         if len(matching_scopes) != 1:
             report.fail(
                 "live:declared-role-assignments",
@@ -238,9 +446,13 @@ def _check_live_role_assignments(
             continue
         resolved_scope = next(iter(matching_scopes))
         role = str(assignment.get("role", "")).lower()
-        expected[(principal_id, role, resolved_scope)] = (
-            f"{principal_alias}:{assignment.get('role')}@{resolved_scope}"
-        )
+        for principal_id in principal_ids:
+            expected_key = (principal_id, role, resolved_scope)
+            expected[expected_key] = (
+                f"{principal_alias}:{assignment.get('role')}@{resolved_scope}"
+            )
+            if require_declared and assignment.get("required_live") is not False:
+                required_expected.add(expected_key)
 
     actual: dict[tuple[str, str, str], str] = {}
     for assignment in assignments:
@@ -265,7 +477,7 @@ def _check_live_role_assignments(
         principal = principal_aliases.get(principal_id, "<undeclared-principal>")
         actual[(principal_id, role, scope)] = f"{principal}:{assignment.get('roleDefinitionName')}@{scope}"
 
-    missing = sorted(expected[key] for key in expected.keys() - actual.keys())
+    missing = sorted(expected[key] for key in required_expected - actual.keys())
     unexpected = sorted(actual[key] for key in actual.keys() - expected.keys())
     if missing or unexpected:
         report.fail(
@@ -445,6 +657,7 @@ def check_live(
     plan: dict[str, Any],
     *,
     enabled_modules: Iterable[str] | None = None,
+    allow_missing_declared: bool = False,
 ) -> BoundaryReport:
     """Confirm the live subscription matches the plan's assumptions.
 
@@ -504,18 +717,31 @@ def check_live(
             )
         else:
             report.checks_run.append("live:declared-resource-inventory")
-            declared_scopes = [
+            declared_entries = [
                 (
                     f"{section}/{entry.get('name', '<unnamed>')}[{index}]",
                     str(entry.get("scope", "")).lower(),
+                    entry,
                 )
                 for section in ("resources", "identities")
                 for index, entry in enumerate(plan.get(section, []) or [])
+            ]
+            declared_scopes = [
+                (subject, pattern)
+                for subject, pattern, _entry in declared_entries
             ]
             live_resources = {
                 _relative_live_scope(str(resource.get("id", "")), report.resource_group): resource
                 for resource in resources
             }
+            try:
+                _augment_declared_inventory(report, plan, live_resources)
+            except (azure_cli.AzureCliError, requests.RequestException, ValueError) as exc:
+                report.fail(
+                    "live:declared-resource-inventory",
+                    report.resource_group,
+                    f"could not inspect declared child resources: {exc}",
+                )
             declaration_matches = {
                 subject: sorted(
                     scope for scope in live_resources if _scope_matches(scope, pattern)
@@ -533,7 +759,39 @@ def check_live(
             invalid_declarations = {
                 subject: matches
                 for subject, matches in declaration_matches.items()
-                if len(matches) != 1
+                if not (
+                    (
+                        allow_missing_declared
+                        and len(matches)
+                        <= int(
+                            next(
+                                entry.get(
+                                    "deployment_max_live_count",
+                                    entry.get("expected_live_count", 1),
+                                )
+                                for candidate, _pattern, entry in declared_entries
+                                if candidate == subject
+                            )
+                        )
+                    )
+                    or
+                    len(matches) == int(
+                        next(
+                            entry.get("expected_live_count", 1)
+                            for candidate, _pattern, entry in declared_entries
+                            if candidate == subject
+                        )
+                    )
+                    or (
+                        not matches
+                        and next(
+                            entry.get("required_live", True)
+                            for candidate, _pattern, entry in declared_entries
+                            if candidate == subject
+                        )
+                        is False
+                    )
+                )
             }
             invalid_resources = {
                 scope: matches
@@ -549,9 +807,8 @@ def check_live(
                     f"resource_matches={invalid_resources}",
                 )
 
-            identities = azure_cli.try_run(
-                ["identity", "list", "--resource-group", report.resource_group],
-                default=[],
+            identities = azure_cli.run(
+                ["identity", "list", "--resource-group", report.resource_group]
             ) or []
             for identity in identities:
                 live_resources[_relative_live_scope(str(identity.get("id", "")), report.resource_group)] = identity
@@ -575,19 +832,23 @@ def check_live(
                         and not _principal_id(resource)
                         and resource_id
                     ):
-                        detailed = azure_cli.try_run(
-                            ["resource", "show", "--ids", resource_id],
-                            default={},
+                        detailed = azure_cli.run(
+                            ["resource", "show", "--ids", resource_id]
                         ) or {}
                         if isinstance(detailed, dict):
                             live_resources[scope] = detailed
 
             report.checks_run.append("live:declared-role-assignments")
-            subscription_assignments = azure_cli.try_run(
-                ["role", "assignment", "list", "--all", "--include-inherited"],
-                default=[],
+            subscription_assignments = azure_cli.run(
+                ["role", "assignment", "list", "--all", "--include-inherited"]
             ) or []
-            _check_live_role_assignments(report, plan, live_resources, subscription_assignments)
+            _check_live_role_assignments(
+                report,
+                plan,
+                live_resources,
+                subscription_assignments,
+                require_declared=not allow_missing_declared,
+            )
     return report
 
 

@@ -8,20 +8,24 @@ current live deployment state.
 | Definition | Code-defined modern Foundry prompt agent |
 | Model | `gpt-5.4-mini`, exact version `2026-03-17` |
 | Deployment | Global Standard, no automatic model upgrade |
-| Tools | Travel routes, fares, policy, booking simulation, and scoped bookings |
+| Tools | Authenticated OpenAPI routes, fares, policy, and booking simulation |
 | Identity | Synthetic principal resolved on the server |
 | Writes | None; booking is a simulation |
 | Telemetry service | `contoso-travel` |
 
-The agent is created with `PromptAgentDefinition` and `create_version`. Calls use
-the Responses API and name an exact agent version. There is no "first agent"
-lookup and no fallback candidate. Microsoft documents this versioned prompt-agent
-pattern in the [prompt agent quickstart][prompt-agent].
+The agent is created with `PromptAgentDefinition`, a typed `OpenApiTool`, and
+`create_version`. Foundry executes the four HTTPS operations server-side and
+supplies their API key from a project connection; the key is not part of the
+agent definition. Calls use the Responses API and name an exact agent version.
+There is no "first agent" lookup and no fallback candidate. Microsoft documents
+the versioned [prompt-agent pattern][prompt-agent] and [OpenAPI authentication
+contract][openapi-tool].
 
 ```mermaid
 flowchart LR
     P[Synthetic prompt] --> A[Exact Travel agent version]
-    A --> T[Scoped Toolbox function]
+    A --> O[Authenticated OpenAPI tool]
+    O --> T[Fixed-scope Travel Toolbox]
     T --> D[(Synthetic Contoso data)]
     A --> R[Responses API answer]
     A -. model span .-> I[Shared Application Insights]
@@ -37,6 +41,33 @@ unexpected parameters fail before a tool runs. The Toolbox resolves the caller's
 regions and roles from immutable identity keys. A model can choose a business
 filter; it cannot choose whose rows it reads.
 
+## Foundry Playground demo
+
+Open the `travel` project in Foundry, select the newest immutable
+`contoso-travel` version, and send:
+
+> Find the synthetic route from LOC-001 (Contoso Seattle Headquarters) to
+> LOC-002 (Contoso Chicago Distribution).
+
+The Playground completes the turn autonomously and cites `ROUTE-0001`. It does
+not pause for **Enter function output as JSON** because the agent contains one
+server-executed OpenAPI tool rather than client-executed function definitions.
+The same browser flow supports:
+
+- `What synthetic travel policy applies to me?`
+- `Find the published synthetic fares on ROUTE-0001.`
+- `First use travel_search_fares to read the published synthetic fares on ROUTE-0001. Then simulate, but do not purchase, the first returned fare for 2026-09-15.`
+
+The final prompt is a simulation only. The service exposes no purchase operation
+and does not expose the scoped bookings-list operation.
+
+Raw `FunctionTool` definitions are a different integration path. The SDK or CLI
+client that submits such a definition must inspect each function call, execute
+the Toolbox locally, and return function output in a callback loop. Older agent
+versions using that contract therefore are not browser-demo candidates. The
+checked-in callback runtime remains for SDK/CLI examples, while the browser-facing
+definition is regression-tested to permit only typed `OpenApiTool` transport.
+
 ## Synthetic traffic
 
 The Container Apps Job is deployed with its maintenance switch **off**. When an
@@ -46,8 +77,8 @@ slots and the application applies an `America/Chicago` calendar:
 - weekdays run only during 08:00-18:00 local business hours;
 - weekends and all eleven US federal holidays, including observed dates, use two
   quiet daytime slots;
-- a Blob Storage claim permits one conversation per quarter hour across all job
-  replicas and manual runs, enforcing an estate-wide maximum of four per hour;
+- the scheduled job uses one replica and one execution at each configured slot,
+  while each trace records the deterministic local-time slot for audit;
 - Travel can claim only two configured quarter-hour slots per hour, preserving
   the other half of the estate capacity for Support, Research, and Field traffic;
 - every persona, prompt, route, fare, and policy is checked-in synthetic data.
@@ -62,13 +93,24 @@ code where daylight-saving changes can be tested. See [scheduled jobs][jobs].
 
 Promotion is candidate-first:
 
-1. create one immutable agent version and persist its name, version, model version,
+1. deploy a backend and project connection whose release name is bound to the
+   agent definition major version while retaining the previous release during
+   candidate verification;
+2. authenticate directly to all four operations and require deterministic evidence;
+3. create one immutable agent version and persist its name, version, model version,
    and definition digest under the non-published `internal/` path;
-2. invoke that exact version with the golden JSONL;
-3. require correct Toolbox calls and deterministic task and safety checks;
-4. submit the captured outputs to the real eval API, poll to a terminal state, and
+4. invoke that exact version with the golden JSONL and verify the completed OpenAPI
+   calls and arguments returned in Responses API metadata;
+5. submit the captured outputs to the real eval API, poll to a terminal state, and
    require every quality, safety, task, and tool criterion to pass;
-5. only then place that version and an exact image digest in the disabled job.
+6. remove the superseded backend, connection, identity, and exact least-privilege
+   roles so the live boundary again contains one active release;
+7. place the accepted version and exact image digest in the disabled job without
+   redeploying the validated backend.
+
+Re-running an existing release is refused because changing its image would alter
+previous agent versions. Credential rotation is an explicit exception: it preserves
+the live image and updates only the backend secret and project connection.
 
 The verified manual API path is:
 
@@ -114,5 +156,6 @@ public screenshot must be generated from the same synthetic prompts and must pas
 the site scanner.
 
 [prompt-agent]: https://learn.microsoft.com/azure/foundry/agents/quickstarts/prompt-agent
+[openapi-tool]: https://learn.microsoft.com/azure/foundry/agents/how-to/tools/openapi
 [jobs]: https://learn.microsoft.com/azure/container-apps/jobs
 [evaluation]: https://learn.microsoft.com/azure/foundry/observability/how-to/azure-developer-cli-evaluation

@@ -18,13 +18,21 @@ sys.path.insert(0, str(AGENT_SRC))
 
 from contoso_travel_agent.definition import (  # noqa: E402
     AgentDefinitionError,
+    build_agent_definition,
     create_agent_version,
     load_agent_spec,
 )
+from contoso_travel_agent.operations import pin_agent_version  # noqa: E402
 from contoso_travel_agent.runtime import (  # noqa: E402
     AgentRuntimeError,
     ExecutedToolCall,
+    ServerExecutedTravelRuntime,
     TravelAgentRuntime,
+)
+from contoso_travel_agent.service import (  # noqa: E402
+    SAFE_OPERATIONS,
+    api_key_matches,
+    execute_operation,
 )
 
 
@@ -46,7 +54,40 @@ def test_definition_is_exact_and_digest_is_stable():
     assert first.model_version == "2026-03-17"
     assert first.digest == second.digest
     assert first.digest.startswith("sha256:")
-    assert all(tool["strict"] is False for tool in first.tools)
+    assert first.tool_connection_name == "travel-openapi-v3"
+    assert {tool["name"] for tool in first.tools} == SAFE_OPERATIONS
+    assert "travel_list_my_bookings" not in SAFE_OPERATIONS
+
+
+def test_browser_definition_uses_only_typed_server_executed_openapi_tool():
+    spec = load_agent_spec(AGENT_ROOT / "agent.yaml")
+    definition = build_agent_definition(
+        spec,
+        server_url="https://travel.example.invalid",
+        project_connection_id="travel-openapi-v2",
+    ).as_dict()
+    assert [tool["type"] for tool in definition["tools"]] == ["openapi"]
+    assert all(tool["type"] != "function" for tool in definition["tools"])
+    openapi = definition["tools"][0]["openapi"]
+    assert openapi["auth"]["type"] == "project_connection"
+    assert set(
+        operation["post"]["operationId"]
+        for operation in openapi["spec"]["paths"].values()
+    ) == SAFE_OPERATIONS
+    assert all(
+        operation["post"]["requestBody"]["required"] is True
+        for operation in openapi["spec"]["paths"].values()
+    )
+    assert openapi["spec"]["security"] == [{"TravelToolKey": []}]
+
+
+def test_browser_definition_rejects_non_https_tool_target():
+    with pytest.raises(AgentDefinitionError, match="HTTPS"):
+        build_agent_definition(
+            load_agent_spec(AGENT_ROOT / "agent.yaml"),
+            server_url="http://travel.example.invalid",
+            project_connection_id="travel-openapi-v2",
+        )
 
 
 def test_latest_model_version_fails_closed(tmp_path):
@@ -55,6 +96,19 @@ def test_latest_model_version_fails_closed(tmp_path):
     path.write_text(document, encoding="utf-8")
     (tmp_path / "instructions.md").write_text("safe", encoding="utf-8")
     with pytest.raises(AgentDefinitionError, match="exact"):
+        load_agent_spec(path)
+
+
+def test_definition_version_requires_an_immutable_backend_connection(tmp_path):
+    document = (AGENT_ROOT / "agent.yaml").read_text(encoding="utf-8").replace(
+        "travel-openapi-v3",
+        "travel-openapi",
+    )
+    path = tmp_path / "agent.yaml"
+    path.write_text(document, encoding="utf-8")
+    (tmp_path / "instructions.md").write_text("safe", encoding="utf-8")
+
+    with pytest.raises(AgentDefinitionError, match="requires connection"):
         load_agent_spec(path)
 
 
@@ -168,6 +222,133 @@ def test_runtime_inspects_final_response_after_last_tool_round(database):
         assert len(runtime.executed_calls) == 2
 
 
+def test_server_executed_runtime_completes_without_client_callback():
+    responses = SimpleNamespace(
+        create=lambda **_: SimpleNamespace(
+            output=[
+                SimpleNamespace(
+                    type="openapi_call",
+                    name="contoso_travel_toolbox_travel_search_routes",
+                    arguments=json.dumps(
+                        {
+                            "origin_location_id": "LOC-001",
+                            "destination_location_id": "LOC-002",
+                            "limit": 10,
+                        }
+                    ),
+                    call_id="call-1",
+                    status="completed",
+                ),
+                SimpleNamespace(
+                    type="openapi_call_output",
+                    call_id="call-1",
+                    status="completed",
+                ),
+            ],
+            output_text="Synthetic ROUTE-0001 verified.",
+        )
+    )
+    runtime = ServerExecutedTravelRuntime(
+        SimpleNamespace(responses=responses),
+        load_agent_spec(AGENT_ROOT / "agent.yaml"),
+    )
+    assert "ROUTE-0001" in runtime.run_turn("Find route", agent_version="8")
+    assert runtime.executed_calls == [
+        ExecutedToolCall.from_arguments(
+            "travel_search_routes",
+            {
+                "origin_location_id": "LOC-001",
+                "destination_location_id": "LOC-002",
+                "limit": 10,
+            },
+        )
+    ]
+
+
+def test_server_executed_runtime_requires_completed_tool_output():
+    responses = SimpleNamespace(
+        create=lambda **_: SimpleNamespace(
+            output=[
+                SimpleNamespace(
+                    type="openapi_call",
+                    name="contoso_travel_toolbox_travel_get_policy",
+                    arguments="{}",
+                    call_id="call-1",
+                    status="completed",
+                )
+            ],
+            output_text="Synthetic policy.",
+        )
+    )
+    runtime = ServerExecutedTravelRuntime(
+        SimpleNamespace(responses=responses),
+        load_agent_spec(AGENT_ROOT / "agent.yaml"),
+    )
+
+    with pytest.raises(AgentRuntimeError, match="no completed output"):
+        runtime.run_turn("Find policy", agent_version="8")
+
+
+def test_server_executed_runtime_rejects_function_callback():
+    responses = SimpleNamespace(
+        create=lambda **_: SimpleNamespace(
+            output=[SimpleNamespace(type="function_call")],
+            output_text="",
+        )
+    )
+    runtime = ServerExecutedTravelRuntime(
+        SimpleNamespace(responses=responses),
+        load_agent_spec(AGENT_ROOT / "agent.yaml"),
+    )
+    with pytest.raises(AgentRuntimeError, match="client function output"):
+        runtime.run_turn("Find route", agent_version="8")
+
+
+def test_service_exposes_only_safe_operations():
+    class RecordingToolbox:
+        def __init__(self):
+            self.calls = []
+
+        def call(self, name, arguments):
+            self.calls.append((name, arguments))
+            return {"synthetic": True}
+
+    toolbox = RecordingToolbox()
+    assert execute_operation(toolbox, "travel_get_policy", {}) == {"synthetic": True}
+    assert toolbox.calls == [("travel_get_policy", {})]
+    with pytest.raises(KeyError, match="unknown Travel operation"):
+        execute_operation(toolbox, "travel_list_my_bookings", {})
+
+
+def test_service_api_key_comparison_rejects_non_ascii_without_error():
+    assert api_key_matches("expected", "expected")
+    assert not api_key_matches("unexpected-\u00ff", "expected")
+
+
+def test_promotion_pins_only_the_accepted_agent_version():
+    endpoint = SimpleNamespace(version_selector=None)
+    updated = SimpleNamespace(
+        agent_endpoint=SimpleNamespace(
+            version_selector=SimpleNamespace(
+                version_selection_rules=[
+                    SimpleNamespace(agent_version="7", traffic_percentage=100)
+                ]
+            )
+        )
+    )
+    agents = SimpleNamespace(
+        get=lambda **_: SimpleNamespace(agent_endpoint=endpoint),
+        update_details=lambda **kwargs: updated,
+    )
+
+    pin_agent_version(
+        SimpleNamespace(agents=agents),
+        {"agent_name": "contoso-travel", "created_version": "7"},
+    )
+
+    assert endpoint.version_selector.version_selection_rules[0].agent_version == "7"
+
+
 @pytest.mark.parametrize(
     "created",
     [
@@ -178,8 +359,30 @@ def test_runtime_inspects_final_response_after_last_tool_round(database):
 def test_create_version_rejects_missing_or_mismatched_identity(created):
     project = SimpleNamespace(
         agents=SimpleNamespace(create_version=lambda **_: created),
+        connections=SimpleNamespace(
+            get=lambda _: SimpleNamespace(
+                target="https://travel.example.invalid",
+                id="travel-openapi-v2",
+            )
+        ),
     )
     with pytest.raises(AgentDefinitionError):
+        create_agent_version(project, load_agent_spec(AGENT_ROOT / "agent.yaml"))
+
+
+@pytest.mark.parametrize(
+    ("connection", "message"),
+    [
+        (SimpleNamespace(target="", id="connection-id"), "has no target"),
+        (
+            SimpleNamespace(target="https://travel.example.invalid", id=""),
+            "has no resource ID",
+        ),
+    ],
+)
+def test_create_version_rejects_incomplete_project_connection(connection, message):
+    project = SimpleNamespace(connections=SimpleNamespace(get=lambda _: connection))
+    with pytest.raises(AgentDefinitionError, match=message):
         create_agent_version(project, load_agent_spec(AGENT_ROOT / "agent.yaml"))
 
 
@@ -200,9 +403,19 @@ def test_create_version_binds_digest_and_verifies_readback():
 
     agents = Agents()
     spec = load_agent_spec(AGENT_ROOT / "agent.yaml")
-    manifest = create_agent_version(SimpleNamespace(agents=agents), spec)
+    project = SimpleNamespace(
+        agents=agents,
+        connections=SimpleNamespace(
+            get=lambda _: SimpleNamespace(
+                target="https://travel.example.invalid",
+                id="travel-openapi-v2",
+            )
+        ),
+    )
+    manifest = create_agent_version(project, spec)
     assert manifest["created_version"] == "7"
     assert agents.metadata == {"definition_digest": spec.digest}
+    assert agents.definition.as_dict()["tools"][0]["type"] == "openapi"
 
 
 @pytest.mark.parametrize("mismatch", ["metadata", "definition"])
@@ -227,7 +440,15 @@ def test_create_version_rejects_mismatched_readback(mismatch):
 
     with pytest.raises(AgentDefinitionError, match="digest|definition"):
         create_agent_version(
-            SimpleNamespace(agents=Agents()),
+            SimpleNamespace(
+                agents=Agents(),
+                connections=SimpleNamespace(
+                    get=lambda _: SimpleNamespace(
+                        target="https://travel.example.invalid",
+                        id="travel-openapi-v2",
+                    )
+                ),
+            ),
             load_agent_spec(AGENT_ROOT / "agent.yaml"),
         )
 

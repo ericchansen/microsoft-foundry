@@ -24,6 +24,11 @@ on:
         required: true
         type: boolean
         default: false
+      rotate_tool_key:
+        description: Rotate the current tool credential without changing its image or agent version
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -33,9 +38,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.13"
           cache: pip
@@ -71,7 +76,7 @@ jobs:
       # inside pip after the Dockerfile deletes pip, which is a finding about a
       # file that is not in the shipped image.
       - name: Vulnerability scan
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: contoso-travel:ci
           format: table
@@ -80,7 +85,7 @@ jobs:
           severity: HIGH,CRITICAL
 
       - name: Generate image SBOM
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
         with:
           image: contoso-travel:ci
           artifact-name: contoso-travel.spdx.json
@@ -102,11 +107,11 @@ jobs:
     env:
       RESOURCE_GROUP: rg-contoso-agents
       OTEL_SERVICE_NAME: contoso-travel
-      FOUNDRY_PROJECT_ENDPOINT: ${{ vars.FOUNDRY_TRAVEL_PROJECT_ENDPOINT }}
+      FOUNDRY_PROJECT_ENDPOINT: ${{ secrets.FOUNDRY_TRAVEL_PROJECT_ENDPOINT }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.13"
           cache: pip
@@ -116,11 +121,11 @@ jobs:
           pip install -e ".[dev]"
           pip install -r agents/travel/requirements.txt
 
-      - uses: azure/login@v2
+      - uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2
         with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Require owned boundary
         run: |
@@ -138,7 +143,7 @@ jobs:
               --api-version 2019-05-01 >/dev/null 2>&1; then
             optional_args+=(--enable-module optional-control-plane)
           fi
-          foundry boundary "${optional_args[@]}"
+          foundry boundary --deployment-readiness "${optional_args[@]}"
 
       - name: Refuse concurrent resource-group deployments
         run: |
@@ -156,20 +161,6 @@ jobs:
             --template-file infra/modules/model-deployment.bicep \
             --parameters accountName=contoso-agents-foundry
 
-      - name: Create, smoke, and evaluate exact candidate
-        env:
-          PYTHONPATH: src:agents/travel/src
-        run: |
-          python -m contoso_travel_agent.operations deploy
-          python -m contoso_travel_agent.operations smoke
-          python -m contoso_travel_agent.operations evaluate
-
-      - name: Resolve candidate version
-        id: candidate
-        shell: bash
-        run: |
-          echo "version=$(python -c 'import json; print(json.load(open("internal/travel/agent-version.json"))["created_version"])')" >> "$GITHUB_OUTPUT"
-
       - name: Resolve project registry
         id: acr
         shell: bash
@@ -181,11 +172,11 @@ jobs:
       - name: Authenticate Docker to the owned registry
         run: az acr login --name "${{ steps.acr.outputs.name }}"
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Push image with SBOM and provenance
         id: image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           file: agents/travel/Dockerfile
@@ -194,24 +185,284 @@ jobs:
           provenance: mode=max
           sbom: true
 
-      - name: Deploy disabled-by-default job with exact candidate
+      - name: Resolve immutable tool release
+        id: release
         shell: bash
         run: |
-          digest="${{ steps.image.outputs.digest }}"
+          release="v$(python -c 'import yaml; print(yaml.safe_load(open("agents/travel/agent.yaml"))["definition_version"].split(".")[0])')"
+          account_id="$(az cognitiveservices account show \
+            --resource-group "$RESOURCE_GROUP" \
+            --name contoso-agents-foundry \
+            --query id \
+            --output tsv)"
+          mapfile -t connections < <(az rest \
+            --method get \
+            --url "https://management.azure.com${account_id}/projects/travel/connections?api-version=2026-05-01" \
+            --query "value[?starts_with(name, 'travel-openapi-v')].name" \
+            --output tsv)
+          mapfile -t apps < <(az containerapp list \
+            --resource-group "$RESOURCE_GROUP" \
+            --query "[?starts_with(name, 'contoso-agents-travel-tool-v')].name" \
+            --output tsv)
+          mapfile -t identities < <(az identity list \
+            --resource-group "$RESOURCE_GROUP" \
+            --query "[?starts_with(name, 'contoso-agents-travel-tool-v')].name" \
+            --output tsv)
+          connection_releases="$(printf '%s\n' "${connections[@]#travel-openapi-}" | sed '/^$/d' | sort)"
+          app_releases="$(printf '%s\n' "${apps[@]#contoso-agents-travel-tool-}" | sed '/^$/d' | sort)"
+          identity_releases="$(printf '%s\n' "${identities[@]#contoso-agents-travel-tool-}" | sed '/^$/d' | sort)"
+          if [[ "$app_releases" != "$identity_releases" ]]; then
+            echo "Travel tool app and identity releases do not reconcile." >&2
+            exit 1
+          fi
+          while IFS= read -r connection_release; do
+            if [[ -n "$connection_release" ]] &&
+              ! grep -qx "$connection_release" <<<"$app_releases"; then
+              echo "A Travel tool connection has no matching app and identity." >&2
+              exit 1
+            fi
+          done <<<"$connection_releases"
+          surplus_releases="$(comm -13 \
+            <(printf '%s\n' "$connection_releases") \
+            <(printf '%s\n' "$app_releases"))"
+          if [[ -n "$surplus_releases" && "$surplus_releases" != "$release" ]]; then
+            echo "A partial Travel deployment exists for an unexpected release." >&2
+            exit 1
+          fi
+          if (( ${#connections[@]} > 2 )); then
+            echo "More than two Travel tool releases exist; refusing ambiguous recovery." >&2
+            exit 1
+          fi
+          previous=""
+          if (( ${#connections[@]} == 2 )); then
+            if [[ " ${connection_releases//$'\n'/ } " != *" ${release} "* ]]; then
+              echo "Two stale releases exist and neither is the desired release." >&2
+              exit 1
+            fi
+            previous="$(printf '%s\n' "$connection_releases" | grep -v "^${release}$")"
+            live_image="$(az containerapp show \
+              --resource-group "$RESOURCE_GROUP" \
+              --name "contoso-agents-travel-tool-${release}" \
+              --query properties.template.containers[0].image \
+              --output tsv)"
+            repository="${live_image%@sha256:*}"
+            digest="${live_image##*@sha256:}"
+            mode=resume
+          elif (( ${#connections[@]} == 1 )); then
+            previous="${connections[0]#travel-openapi-}"
+            if [[ "$previous" == "$release" ]]; then
+              if [[ "${{ inputs.rotate_tool_key }}" != "true" ]]; then
+                echo "Tool release ${release} already exists; bump definition_version or request key rotation." >&2
+                exit 1
+              fi
+              live_image="$(az containerapp show \
+                --resource-group "$RESOURCE_GROUP" \
+                --name "contoso-agents-travel-tool-${release}" \
+                --query properties.template.containers[0].image \
+                --output tsv)"
+              repository="${live_image%@sha256:*}"
+              digest="${live_image##*@sha256:}"
+              mode=rotate
+              previous=""
+            else
+              if [[ "${{ inputs.rotate_tool_key }}" == "true" ]]; then
+                echo "Cannot rotate ${release} because that release is not active." >&2
+                exit 1
+              fi
+              repository="${{ steps.acr.outputs.server }}/contoso-travel"
+              digest="${{ steps.image.outputs.digest }}"
+              digest="${digest#sha256:}"
+              mode=new
+            fi
+          else
+            if [[ "${{ inputs.rotate_tool_key }}" == "true" ]]; then
+              echo "Cannot rotate ${release} because no Travel tool release exists." >&2
+              exit 1
+            fi
+            repository="${{ steps.acr.outputs.server }}/contoso-travel"
+            digest="${{ steps.image.outputs.digest }}"
+            digest="${digest#sha256:}"
+            mode=new
+          fi
+          echo "name=$release" >> "$GITHUB_OUTPUT"
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "previous=$previous" >> "$GITHUB_OUTPUT"
+          echo "image_repository=$repository" >> "$GITHUB_OUTPUT"
+          echo "image_digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Generate ephemeral tool credential
+        shell: bash
+        run: |
+          umask 077
+          openssl rand -hex 32 > "$RUNNER_TEMP/travel-tool-api-key"
+
+      - name: Deploy authenticated Travel tool service
+        id: tool
+        shell: bash
+        run: |
+          tool_api_key="$(cat "$RUNNER_TEMP/travel-tool-api-key")"
+          deployment="travel-tool-${GITHUB_RUN_ID}"
+          az deployment group create \
+            --name "$deployment" \
+            --resource-group "$RESOURCE_GROUP" \
+            --template-file infra/travel.bicep \
+            --parameters \
+              deployTrafficJob=false \
+              imageRepository="${{ steps.release.outputs.image_repository }}" \
+              imageDigest="${{ steps.release.outputs.image_digest }}" \
+              agentVersion=pending \
+              toolApiKey="$tool_api_key" \
+              toolRelease="${{ steps.release.outputs.name }}" \
+              location="$(python -c 'import yaml; print(yaml.safe_load(open("config/selected-region.yaml"))["region"])')"
+          echo "url=$(az deployment group show \
+            --name "$deployment" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query properties.outputs.toolServiceUrl.value \
+            --output tsv)" >> "$GITHUB_OUTPUT"
+
+      - name: Verify authenticated Travel operations
+        shell: bash
+        run: |
+          tool_api_key="$(cat "$RUNNER_TEMP/travel-tool-api-key")"
+          url="${{ steps.tool.outputs.url }}"
+          test "$(curl --fail --silent --show-error --retry 5 "$url/healthz" | jq -r .status)" = healthy
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            --request POST \
+            --header 'content-type: application/json' \
+            --data '{}' \
+            "$url/operations/travel_get_policy")" = 401
+          curl --fail --silent --show-error \
+            --request POST \
+            --header 'content-type: application/json' \
+            --header "x-travel-tool-key: $tool_api_key" \
+            --data '{"origin_location_id":"LOC-001","destination_location_id":"LOC-002"}' \
+            "$url/operations/travel_search_routes" | jq -e '.. | strings | select(. == "ROUTE-0001")' >/dev/null
+          curl --fail --silent --show-error \
+            --request POST \
+            --header 'content-type: application/json' \
+            --header "x-travel-tool-key: $tool_api_key" \
+            --data '{}' \
+            "$url/operations/travel_get_policy" | jq -e '.. | strings | select(. == "TPOL-EMEA-01")' >/dev/null
+          curl --fail --silent --show-error \
+            --request POST \
+            --header 'content-type: application/json' \
+            --header "x-travel-tool-key: $tool_api_key" \
+            --data '{"route_id":"ROUTE-0001"}' \
+            "$url/operations/travel_search_fares" | jq -e '.. | strings | select(. == "FARE-00001")' >/dev/null
+          curl --fail --silent --show-error \
+            --request POST \
+            --header 'content-type: application/json' \
+            --header "x-travel-tool-key: $tool_api_key" \
+            --data '{"route_id":"ROUTE-0001","fare_id":"FARE-00001","depart_on":"2026-09-15"}' \
+            "$url/operations/travel_simulate_booking" | jq -e '.simulated == true and .decision == "allowed"' >/dev/null
+
+      - name: Create, smoke, and evaluate exact candidate
+        if: steps.release.outputs.mode != 'rotate'
+        env:
+          PYTHONPATH: src:agents/travel/src
+        run: |
+          python -m contoso_travel_agent.operations deploy
+          python -m contoso_travel_agent.operations smoke
+          python -m contoso_travel_agent.operations evaluate
+
+      - name: Resolve candidate version
+        if: steps.release.outputs.mode != 'rotate'
+        id: candidate
+        shell: bash
+        run: |
+          echo "version=$(python -c 'import json; print(json.load(open("internal/travel/agent-version.json"))["created_version"])')" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy disabled-by-default job with exact candidate
+        if: steps.release.outputs.mode != 'rotate'
+        shell: bash
+        run: |
+          digest="${{ steps.release.outputs.image_digest }}"
           az deployment group create \
             --name "travel-job-${GITHUB_RUN_ID}" \
             --resource-group "$RESOURCE_GROUP" \
             --template-file infra/travel.bicep \
             --parameters \
               imageRepository="${{ steps.acr.outputs.server }}/contoso-travel" \
-              imageDigest="${digest#sha256:}" \
+              imageDigest="$digest" \
               agentVersion="${{ steps.candidate.outputs.version }}" \
+              deployToolService=false \
+              toolRelease="${{ steps.release.outputs.name }}" \
               location="$(python -c 'import yaml; print(yaml.safe_load(open("config/selected-region.yaml"))["region"])')"
 
+      - name: Decommission superseded tool release
+        if: steps.release.outputs.mode != 'rotate' && steps.release.outputs.previous != ''
+        shell: bash
+        run: |
+          previous="${{ steps.release.outputs.previous }}"
+          current="${{ steps.release.outputs.name }}"
+          [[ "$previous" =~ ^v[0-9]+$ ]]
+          test "$previous" != "$current"
+          account_id="$(az cognitiveservices account show \
+            --resource-group "$RESOURCE_GROUP" \
+            --name contoso-agents-foundry \
+            --query id \
+            --output tsv)"
+          identity_name="contoso-agents-travel-tool-${previous}"
+          principal_id="$(az identity show \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$identity_name" \
+            --query principalId \
+            --output tsv)"
+          registry_id="$(az acr show \
+            --name "${{ steps.acr.outputs.name }}" \
+            --query id \
+            --output tsv)"
+          insights_id="$(az monitor app-insights component show \
+            --resource-group "$RESOURCE_GROUP" \
+            --app contoso-agents-insights \
+            --query id \
+            --output tsv)"
+          az rest \
+            --method delete \
+            --url "https://management.azure.com${account_id}/projects/travel/connections/travel-openapi-${previous}?api-version=2026-05-01"
+          az containerapp delete \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$identity_name" \
+            --yes
+          az role assignment delete \
+            --assignee-object-id "$principal_id" \
+            --role AcrPull \
+            --scope "$registry_id"
+          az role assignment delete \
+            --assignee-object-id "$principal_id" \
+            --role "Monitoring Metrics Publisher" \
+            --scope "$insights_id"
+          az identity delete \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$identity_name"
+
+      - name: Verify converged live boundary
+        run: |
+          optional_args=()
+          if az resource show \
+            --resource-group "$RESOURCE_GROUP" \
+            --resource-type Microsoft.App/agents \
+            --name contoso-agents-sre-control-plane \
+            --api-version 2026-01-01 >/dev/null 2>&1 ||
+            az resource show \
+              --resource-group "$RESOURCE_GROUP" \
+              --resource-type Microsoft.Logic/workflows \
+              --name contoso-agents-approvals-loop \
+              --api-version 2019-05-01 >/dev/null 2>&1; then
+            optional_args+=(--enable-module optional-control-plane)
+          fi
+          foundry boundary "${optional_args[@]}"
+
+      - name: Remove ephemeral tool credential
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/travel-tool-api-key"
+
       - name: Create and scan sanitized candidate evidence
+        if: steps.release.outputs.mode != 'rotate'
         env:
           AGENT_VERSION: ${{ steps.candidate.outputs.version }}
-          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+          IMAGE_DIGEST: sha256:${{ steps.release.outputs.image_digest }}
         run: |
           mkdir -p reports
           jq -n \
@@ -228,7 +479,8 @@ jobs:
           foundry scan reports/travel-candidate.json
 
       - name: Retain sanitized candidate evidence
-        uses: actions/upload-artifact@v4
+        if: steps.release.outputs.mode != 'rotate'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: travel-candidate-${{ github.run_id }}
           path: reports/travel-candidate.json
