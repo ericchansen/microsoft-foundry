@@ -16,7 +16,12 @@ from contoso_travel_agent.evaluation import (  # noqa: E402
     load_golden,
     run_openai_eval,
 )
-from contoso_travel_agent.operations import OperationsError, _write_internal  # noqa: E402
+from contoso_travel_agent.operations import (  # noqa: E402
+    CONTINUOUS_EVALUATION_NAME,
+    OperationsError,
+    _write_internal,
+    verify_continuous_evaluation,
+)
 from contoso_travel_agent.runtime import ExecutedToolCall  # noqa: E402
 
 
@@ -51,6 +56,59 @@ def test_collection_has_no_first_agent_or_fallback_path():
         collect_candidate_samples([], agent_name="contoso-travel", agent_version="", run_case=lambda *_: ("", []))
 
 
+def test_server_executed_samples_require_observed_server_calls():
+    golden = [
+        {
+            "case_id": "server-openapi",
+            "prompt": "Find route",
+            "expected_tools": [
+                {
+                    "name": "travel_search_routes",
+                    "arguments": {
+                        "origin_location_id": "LOC-001",
+                        "destination_location_id": "LOC-002",
+                        "limit": 10,
+                    },
+                }
+            ],
+            "must_include": ["ROUTE-0001"],
+        }
+    ]
+    samples = collect_candidate_samples(
+        golden,
+        agent_name="contoso-travel",
+        agent_version="8",
+        run_case=lambda *_: (
+            "Synthetic ROUTE-0001.",
+            [
+                ExecutedToolCall.from_arguments(
+                    "travel_search_routes",
+                    {
+                        "origin_location_id": "LOC-001",
+                        "destination_location_id": "LOC-002",
+                        "limit": 10,
+                    },
+                )
+            ],
+        ),
+        server_executed=True,
+    )
+    assert samples[0].eval_item()["tool_result"] == "PASS"
+
+
+def test_server_executed_samples_do_not_fake_unobserved_tool_success():
+    row = load_golden(AGENT_ROOT / "golden" / "travel.jsonl")[0]
+    sample = collect_candidate_samples(
+        [row],
+        agent_name="contoso-travel",
+        agent_version="8",
+        run_case=lambda *_: ("Synthetic ROUTE-0001.", []),
+        server_executed=True,
+    )[0]
+
+    assert sample.eval_item()["tool_result"] == "FAIL"
+
+
 @pytest.mark.parametrize(
     "actual_calls",
     [
@@ -64,7 +122,7 @@ def test_collection_has_no_first_agent_or_fallback_path():
         ],
     ],
 )
-def test_tool_correctness_requires_exact_arguments_and_sequence(actual_calls):
+def test_tool_correctness_requires_expected_arguments_and_sequence(actual_calls):
     row = load_golden(AGENT_ROOT / "golden" / "travel.jsonl")[0]
     sample = collect_candidate_samples(
         [row],
@@ -73,6 +131,30 @@ def test_tool_correctness_requires_exact_arguments_and_sequence(actual_calls):
         run_case=lambda *_: ("synthetic result", actual_calls),
     )[0]
     assert sample.eval_item()["tool_result"] == "FAIL"
+
+
+def test_tool_correctness_allows_unconstrained_optional_arguments():
+    row = load_golden(AGENT_ROOT / "golden" / "travel.jsonl")[0]
+    sample = collect_candidate_samples(
+        [row],
+        agent_name="contoso-travel",
+        agent_version="7",
+        run_case=lambda *_: (
+            "Synthetic ROUTE-0001.",
+            [
+                ExecutedToolCall.from_arguments(
+                    "travel_search_routes",
+                    {
+                        "origin_location_id": "LOC-001",
+                        "destination_location_id": "LOC-002",
+                        "limit": 25,
+                    },
+                )
+            ],
+        ),
+    )[0]
+
+    assert sample.eval_item()["tool_result"] == "PASS"
 
 
 class FakeRuns:
@@ -138,6 +220,9 @@ def test_real_eval_polls_to_terminal_and_has_four_criteria():
         "task_correctness",
         "tool_correctness",
     }
+    quality_input = captured["testing_criteria"][0]["input"]
+    assert "Tools:" not in quality_input[1]["content"]
+    assert "separate criteria validate tool execution" in quality_input[0]["content"]
 
 
 def test_failed_eval_retains_per_sample_evidence():
@@ -189,6 +274,84 @@ def test_terminal_eval_failure_retains_run_evidence():
     assert raised.value.evidence["run_id"] == "run-1"
     assert raised.value.evidence["status"] == "failed"
     assert raised.value.evidence["output_items"] == []
+
+
+def test_continuous_evaluation_readback_requires_newest_passing_result():
+    evaluations = SimpleNamespace(
+        list=lambda **_: [
+            SimpleNamespace(id="continuous-eval", name=CONTINUOUS_EVALUATION_NAME),
+        ],
+        runs=SimpleNamespace(
+            list=lambda **_: [
+                SimpleNamespace(
+                    created_at=1,
+                    status="failed",
+                    result_counts={"passed": 0, "failed": 1, "errored": 0, "total": 1},
+                    report_url="https://example.invalid/old",
+                ),
+                SimpleNamespace(
+                    created_at=2,
+                    status="completed",
+                    result_counts=SimpleNamespace(
+                        model_dump=lambda: {
+                            "passed": 1,
+                            "failed": 0,
+                            "errored": 0,
+                            "skipped": 0,
+                            "total": 1,
+                        }
+                    ),
+                    report_url="https://example.invalid/new",
+                ),
+            ]
+        ),
+    )
+
+    result = verify_continuous_evaluation(SimpleNamespace(evals=evaluations))
+
+    assert result == {
+        "evaluation_name": CONTINUOUS_EVALUATION_NAME,
+        "status": "completed",
+        "result_counts": {
+            "errored": 0,
+            "failed": 0,
+            "passed": 1,
+            "skipped": 0,
+            "total": 1,
+        },
+        "report_url_present": True,
+    }
+    assert "eval" not in result
+    assert "run" not in result
+
+
+@pytest.mark.parametrize(
+    ("runs", "match"),
+    [
+        ([], "no run results"),
+        (
+            [
+                SimpleNamespace(
+                    created_at=1,
+                    status="completed",
+                    result_counts={"passed": 0, "failed": 1, "errored": 0, "total": 1},
+                    report_url="https://example.invalid/report",
+                )
+            ],
+            "not passing",
+        ),
+    ],
+)
+def test_continuous_evaluation_readback_fails_closed(runs, match):
+    evaluations = SimpleNamespace(
+        list=lambda **_: [
+            SimpleNamespace(id="continuous-eval", name=CONTINUOUS_EVALUATION_NAME),
+        ],
+        runs=SimpleNamespace(list=lambda **_: runs),
+    )
+
+    with pytest.raises(OperationsError, match=match):
+        verify_continuous_evaluation(SimpleNamespace(evals=evaluations))
 
 
 def test_live_evidence_can_only_be_written_under_internal(tmp_path):

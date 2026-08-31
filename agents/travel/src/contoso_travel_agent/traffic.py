@@ -191,7 +191,7 @@ class TrafficPlan:
         local = instant.astimezone(self.timezone)
         slot = local.strftime("%H:%M")
         if force:
-            allowed = (local.minute // 15) * 15 in self.travel_quarter_minutes
+            allowed = True
         elif self._is_us_holiday(local):
             allowed = slot in self.holiday_slots
         elif local.weekday() >= 5:
@@ -212,21 +212,6 @@ class TrafficPlan:
         return f"{local:%Y/%m/%d/%H}/{quarter}.json"
 
 
-def _claim_slot(blob_service_url: str, slot_key: str, credential: Any) -> bool:
-    from azure.core.exceptions import ResourceExistsError
-    from azure.storage.blob import BlobClient
-
-    url = f"{blob_service_url.rstrip('/')}/{slot_key}"
-    try:
-        BlobClient.from_blob_url(url, credential=credential).upload_blob(
-            json.dumps({"synthetic": True, "slot": slot_key}),
-            overwrite=False,
-        )
-    except ResourceExistsError:
-        return False
-    return True
-
-
 def _build_database(repo_root: Path) -> sqlite3.Connection:
     out_dir = Path(tempfile.mkdtemp(prefix="contoso-travel-"))
     result = build_mod.build(
@@ -245,7 +230,7 @@ def _flush_telemetry(provider: Any) -> None:
 
 
 def run_from_environment(*, instant: datetime | None = None) -> dict[str, Any]:
-    required = ("FOUNDRY_PROJECT_ENDPOINT", "TRAVEL_AGENT_VERSION", "TRAFFIC_LEDGER_URL")
+    required = ("FOUNDRY_PROJECT_ENDPOINT", "TRAVEL_AGENT_VERSION")
     missing = [name for name in required if not os.environ.get(name)]
     if missing:
         raise TrafficConfigurationError(f"missing required environment variable(s): {', '.join(missing)}")
@@ -267,8 +252,7 @@ def run_from_environment(*, instant: datetime | None = None) -> dict[str, Any]:
     from opentelemetry import trace
 
     credential = DefaultAzureCredential()
-    if not _claim_slot(os.environ["TRAFFIC_LEDGER_URL"], plan.slot_key(now), credential):
-        return {"status": "skipped", "reason": "synthetic traffic slot already claimed"}
+    slot_key = plan.slot_key(now)
 
     project = AIProjectClient(endpoint=os.environ["FOUNDRY_PROJECT_ENDPOINT"], credential=credential)
     connection_string = project.telemetry.get_application_insights_connection_string()
@@ -283,6 +267,7 @@ def run_from_environment(*, instant: datetime | None = None) -> dict[str, Any]:
         _build_database(repo_root) as connection,
     ):
         span.set_attribute("contoso.synthetic", True)
+        span.set_attribute("contoso.traffic.slot", slot_key)
         span.set_attribute("contoso.scenario.id", scenario.scenario_id)
         span.set_attribute("gen_ai.agent.name", spec.name)
         span.set_attribute("gen_ai.agent.version", os.environ["TRAVEL_AGENT_VERSION"])
@@ -302,6 +287,7 @@ def run_from_environment(*, instant: datetime | None = None) -> dict[str, Any]:
     return {
         "status": "completed",
         "scenario_id": scenario.scenario_id,
+        "slot": slot_key,
         "tool_names": [call.tool for call in runtime.audit],
         "answer_length": len(answer),
         "synthetic": True,

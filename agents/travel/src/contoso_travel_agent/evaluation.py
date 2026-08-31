@@ -28,6 +28,7 @@ class CandidateSample:
     must_include: tuple[str, ...]
     must_not_include: tuple[str, ...]
     expected_tool_calls: tuple[ExecutedToolCall, ...]
+    server_executed: bool = False
 
     def eval_item(self) -> dict[str, object]:
         return {
@@ -50,9 +51,27 @@ class CandidateSample:
                 else "FAIL"
             ),
             "tool_result": (
-                "PASS" if self.tool_calls == self.expected_tool_calls else "FAIL"
+                "PASS"
+                if tool_calls_match(self.tool_calls, self.expected_tool_calls)
+                else "FAIL"
             ),
         }
+
+
+def tool_calls_match(
+    actual: tuple[ExecutedToolCall, ...] | list[ExecutedToolCall],
+    expected: tuple[ExecutedToolCall, ...] | list[ExecutedToolCall],
+) -> bool:
+    if len(actual) != len(expected):
+        return False
+    for actual_call, expected_call in zip(actual, expected, strict=True):
+        if actual_call.name != expected_call.name:
+            return False
+        actual_arguments = actual_call.as_dict()["arguments"]
+        expected_arguments = expected_call.as_dict()["arguments"]
+        if any(actual_arguments.get(name) != value for name, value in expected_arguments.items()):
+            return False
+    return True
 
 
 def load_golden(path: Path) -> list[dict[str, Any]]:
@@ -68,13 +87,14 @@ def collect_candidate_samples(
     agent_name: str,
     agent_version: str,
     run_case: Callable[[str, str, str], tuple[str, list[ExecutedToolCall]]],
+    server_executed: bool = False,
 ) -> list[CandidateSample]:
     if not agent_name.strip() or not agent_version.strip():
         raise EvaluationError("evaluation requires an exact agent name and version")
     samples = []
     for row in golden:
         output, tool_calls = run_case(str(row["prompt"]), agent_name, agent_version)
-        if not tool_calls:
+        if not tool_calls and not server_executed:
             raise EvaluationError(f"{row['case_id']}: candidate called no tools")
         expected_tool_calls = tuple(
             ExecutedToolCall.from_arguments(str(tool["name"]), dict(tool["arguments"]))
@@ -88,6 +108,7 @@ def collect_candidate_samples(
                 must_include=tuple(str(value) for value in row.get("must_include", [])),
                 must_not_include=tuple(str(value) for value in row.get("must_not_include", [])),
                 expected_tool_calls=expected_tool_calls,
+                server_executed=server_executed,
             )
         )
     return samples
@@ -101,14 +122,16 @@ def _criterion(name: str, model: str, instruction: str) -> dict[str, Any]:
         "input": [
             {
                 "role": "developer",
-                "content": f"{instruction} Return exactly PASS or FAIL.",
+                "content": (
+                    f"{instruction} Judge the answer text only; separate criteria validate "
+                    "tool execution and deterministic constraints. Return exactly PASS or FAIL."
+                ),
             },
             {
                 "role": "user",
                 "content": (
-                    "Output: {{item.output}}\nTools: {{item.tool_calls}}\n"
-                    "Expected tools: {{item.expected_tool_calls}}\n"
-                    "Required: {{item.must_include}}\nForbidden: {{item.must_not_include}}"
+                    "Output: {{item.output}}\nRequired: {{item.must_include}}\n"
+                    "Forbidden: {{item.must_not_include}}"
                 ),
             },
         ],

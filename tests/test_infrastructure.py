@@ -6,6 +6,7 @@ protect the security and ownership decisions even on machines without either CLI
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -142,7 +143,7 @@ def test_each_project_has_an_explicit_gateway_route_and_connection(infra):
 
 
 def test_deploy_workflow_checks_live_boundary_after_login(infra):
-    login = infra["workflow"].index("uses: azure/login@v2")
+    login = infra["workflow"].index("uses: azure/login@")
     live_boundary = infra["workflow"].index("- name: Verify live ownership boundary")
     catalog_attestation = infra["workflow"].index(
         "- name: Attest existing Foundry model deployments"
@@ -217,6 +218,8 @@ def test_storage_requires_oauth(infra):
     assert "allowSharedKeyAccess: false" in infra["data"]
     assert "defaultToOAuthAuthentication: true" in infra["data"]
     assert "allowBlobPublicAccess: false" in infra["data"]
+    assert infra["data"].count("publicNetworkAccess: 'Disabled'") == 2
+    assert "defaultAction: 'Deny'" in infra["data"]
 
 
 def test_shared_acr_requires_identity_and_supports_hosted_agent_images(infra):
@@ -364,6 +367,57 @@ def test_all_resource_group_mutation_workflows_share_one_lock(repo_root):
     ]
     assert all("group: azure-rg-contoso-agents" in workflow for workflow in workflows)
     assert all("Refuse concurrent resource-group deployments" in workflow for workflow in workflows)
+    assert all(
+        "boundary --deployment-readiness" in workflow
+        for workflow in workflows
+        if "azd provision" in workflow or "Deploy authenticated Travel tool service" in workflow
+    )
+    sensitive_names = (
+        "AZURE_CLIENT_ID",
+        "AZURE_TENANT_ID",
+        "AZURE_SUBSCRIPTION_ID",
+        "FOUNDRY_TRAVEL_PROJECT_ENDPOINT",
+        "BUDGET_CONTACT_EMAIL",
+        "SRE_OPERATOR_GROUP_OBJECT_ID",
+    )
+    for workflow in workflows:
+        for name in sensitive_names:
+            assert f"vars.{name}" not in workflow
+
+
+def test_all_external_github_actions_are_commit_pinned(repo_root):
+    for path in (repo_root / ".github" / "workflows").glob("*.yml"):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if not stripped.startswith(("uses:", "- uses:")) or "uses: ./" in stripped:
+                continue
+            reference = stripped.split("uses:", maxsplit=1)[1].strip().split()[0]
+            assert re.fullmatch(r"[^@]+@[0-9a-f]{40}", reference), (path, reference)
+
+
+def test_travel_release_rotation_is_gated_and_decommissions_previous_release(repo_root):
+    workflow = (repo_root / ".github" / "workflows" / "travel.yml").read_text(
+        encoding="utf-8"
+    )
+    readiness = workflow.index("foundry boundary --deployment-readiness")
+    deploy = workflow.index("- name: Deploy authenticated Travel tool service")
+    candidate = workflow.index("- name: Create, smoke, and evaluate exact candidate")
+    decommission = workflow.index("- name: Decommission superseded tool release")
+    converged = workflow.index("- name: Verify converged live boundary")
+
+    assert readiness < deploy < candidate < decommission < converged
+    assert "rotate_tool_key:" in workflow
+    assert 'mode=rotate' in workflow
+    assert 'mode=resume' in workflow
+    assert 'More than two Travel tool releases exist' in workflow
+    assert 'surplus_releases="$(comm -13' in workflow
+    assert 'partial Travel deployment exists for an unexpected release' in workflow
+    assert 'live_image="$(az containerapp show' in workflow
+    assert 'test "$previous" != "$current"' in workflow
+    assert "travel-openapi-${previous}" in workflow
+    travel_bicep = (repo_root / "infra" / "travel.bicep").read_text(encoding="utf-8")
+    assert "TRAVEL_TOOL_CREDENTIAL_REVISION" in travel_bicep
+    assert "value: uniqueString(toolApiKey)" in travel_bicep
 
 
 def test_infra_confirmation_input_is_not_interpolated_into_shell(repo_root):
@@ -397,7 +451,7 @@ def test_container_vulnerability_gates_cover_every_shipped_image(repo_root):
     ci_workflow = (repo_root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     workflows = travel_workflow + ci_workflow
 
-    assert workflows.count("uses: aquasecurity/trivy-action@v0.36.0") == 4
+    assert workflows.count("uses: aquasecurity/trivy-action@") == 4
     assert workflows.count('exit-code: "1"') == 4
     assert workflows.count("severity: HIGH,CRITICAL") == 4
     for image in ("contoso-travel:ci", "contoso-support:ci", "contoso-research:ci", "contoso-field:ci"):

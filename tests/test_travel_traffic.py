@@ -45,12 +45,12 @@ def test_weekday_business_hours_reserve_half_the_estate_slots_for_travel(plan):
     assert plan.scenario_for(datetime(2026, 8, 24, 14, 1, tzinfo=UTC), enabled=True) is None
 
 
-def test_forced_runs_cannot_exceed_the_travel_hourly_share(plan):
+def test_forced_acceptance_runs_bypass_the_schedule(plan):
     allowed = [
         plan.scenario_for(datetime(2026, 8, 24, 2, minute, tzinfo=UTC), enabled=True, force=True)
         for minute in (2, 17, 32, 47)
     ]
-    assert [scenario is not None for scenario in allowed] == [True, False, True, False]
+    assert [scenario is not None for scenario in allowed] == [True, True, True, True]
 
 
 def test_weekends_and_holidays_are_quiet(plan):
@@ -129,10 +129,15 @@ def test_container_and_bicep_pin_security_contracts():
     assert "FROM python:3.13.15-slim-bookworm@sha256:" in dockerfile
     assert "USER 65532:65532" in dockerfile
     assert "image: '${imageRepository}@sha256:${imageDigest}'" in bicep
-    assert "cronExpression: '0,30 * * * *'" in bicep
+    assert "param trafficCronExpression string = '0,30 * * * *'" in bicep
+    assert "cronExpression: trafficCronExpression" in bicep
     assert "parallelism: 1" in bicep
     assert "TRAFFIC_ENABLED" in bicep
     assert "OTEL_SERVICE_NAME" in bicep
+    assert "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT" in bicep
+    assert "AZURE_TRACING_GEN_AI_CONTENT_RECORDING_ENABLED" in bicep
+    assert "TRAFFIC_LEDGER_URL" not in bicep
+    assert "Storage Blob Data Contributor" not in bicep
 
 
 def test_live_workflow_detects_optional_boundary_and_uploads_only_sanitized_evidence():

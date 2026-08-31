@@ -116,6 +116,32 @@ class TestHappyPath:
                     left_name,
                 )
 
+    def test_shipped_boundary_allows_exactly_one_versioned_travel_tool_release(self, repo_root):
+        shipped = boundary.load_plan(repo_root / "config" / "boundary.yaml")
+        travel_services = [
+            entry
+            for entry in shipped["resources"]
+            if entry["kind"] == "Microsoft.App/containerApps"
+            and "travel-tool" in entry["scope"]
+        ]
+        travel_connections = [
+            entry
+            for entry in shipped["resources"]
+            if entry["kind"] == "Microsoft.CognitiveServices/accounts/projects/connections"
+            and "travel-openapi" in entry["scope"]
+        ]
+        travel_identities = [
+            entry
+            for entry in shipped["identities"]
+            if "travel-tool" in entry["scope"]
+        ]
+
+        assert len(travel_services) == len(travel_connections) == len(travel_identities) == 1
+        for entry in (*travel_services, *travel_connections, *travel_identities):
+            assert entry["scope"].endswith("-v*")
+            assert entry["expected_live_count"] == 1
+            assert entry["deployment_max_live_count"] == 2
+
 
 class TestDiagnosticTargets:
     """Where telemetry lands decides whether it leaves the boundary."""
@@ -301,11 +327,6 @@ class TestExistingGroupOwnership:
                 return [{"name": RG, "tags": tags}]
             if arguments[:2] == ["resource", "list"]:
                 return resources
-            raise AssertionError(f"unexpected Azure CLI read: {arguments}")
-
-        monkeypatch.setattr(boundary.azure_cli, "run", run)
-
-        def try_run(arguments, **_kwargs):
             if arguments[:2] == ["identity", "list"]:
                 return identities or []
             if arguments[:2] == ["resource", "show"]:
@@ -315,11 +336,7 @@ class TestExistingGroupOwnership:
                 return role_assignments or []
             raise AssertionError(f"unexpected Azure CLI read: {arguments}")
 
-        monkeypatch.setattr(
-            boundary.azure_cli,
-            "try_run",
-            try_run,
-        )
+        monkeypatch.setattr(boundary.azure_cli, "run", run)
 
     def owned_plan(self):
         return plan(
@@ -369,6 +386,48 @@ class TestExistingGroupOwnership:
         assert "live:declared-resource-inventory" in failed_checks(report)
         assert "resources/foundry" in str(report.violations[-1])
 
+    def test_deployment_readiness_allows_missing_declared_resources(self, monkeypatch):
+        self._patch_live(monkeypatch, tags=self.OWNERSHIP_TAGS, resources=[])
+        report = boundary.check_live(
+            boundary.check_plan(self.owned_plan()),
+            self.owned_plan(),
+            allow_missing_declared=True,
+        )
+        assert report.ok
+
+    def test_deployment_readiness_fails_closed_when_role_inventory_fails(self, monkeypatch):
+        self._patch_live(monkeypatch, tags=self.OWNERSHIP_TAGS, resources=[])
+        original = boundary.azure_cli.run
+
+        def fail_role_inventory(arguments):
+            if arguments[:3] == ["role", "assignment", "list"]:
+                raise boundary.azure_cli.AzureCliError("role inventory unavailable")
+            return original(arguments)
+
+        monkeypatch.setattr(boundary.azure_cli, "run", fail_role_inventory)
+
+        with pytest.raises(boundary.azure_cli.AzureCliError, match="inventory unavailable"):
+            boundary.check_live(
+                boundary.check_plan(self.owned_plan()),
+                self.owned_plan(),
+                allow_missing_declared=True,
+            )
+
+    def test_deployment_readiness_still_rejects_unexpected_resources(self, monkeypatch):
+        resources = [{
+            "id": (
+                "/subscriptions/redacted/resourceGroups/rg-contoso-agents/providers/"
+                "Microsoft.Storage/storageAccounts/not-declared"
+            )
+        }]
+        self._patch_live(monkeypatch, tags=self.OWNERSHIP_TAGS, resources=resources)
+        report = boundary.check_live(
+            boundary.check_plan(self.owned_plan()),
+            self.owned_plan(),
+            allow_missing_declared=True,
+        )
+        assert "live:declared-resource-inventory" in failed_checks(report)
+
     def test_rejects_multiple_resources_absorbed_by_one_wildcard(self, monkeypatch):
         plan_data = plan(
             allow_existing_resource_group=True,
@@ -402,6 +461,42 @@ class TestExistingGroupOwnership:
 
         assert "live:declared-resource-inventory" in failed_checks(report)
         assert "resources/registry" in str(report.violations[-1])
+
+    def test_deployment_readiness_allows_bounded_release_overlap(self, monkeypatch):
+        plan_data = plan(
+            allow_existing_resource_group=True,
+            tags=self.OWNERSHIP_TAGS,
+            resources=[
+                {
+                    "name": "release",
+                    "scope": "providers/Microsoft.App/containerApps/travel-v*",
+                    "expected_live_count": 1,
+                    "deployment_max_live_count": 2,
+                }
+            ],
+            identities=[],
+            role_assignments=[],
+        )
+        resources = [
+            {
+                "id": (
+                    "/subscriptions/redacted/resourceGroups/rg-contoso-agents/providers/"
+                    f"Microsoft.App/containerApps/travel-v{version}"
+                )
+            }
+            for version in (2, 3)
+        ]
+        self._patch_live(monkeypatch, tags=self.OWNERSHIP_TAGS, resources=resources)
+
+        readiness = boundary.check_live(
+            boundary.check_plan(plan_data),
+            plan_data,
+            allow_missing_declared=True,
+        )
+        strict = boundary.check_live(boundary.check_plan(plan_data), plan_data)
+
+        assert readiness.ok
+        assert "live:declared-resource-inventory" in failed_checks(strict)
 
     def test_rejects_overlapping_declarations_for_one_resource(self, monkeypatch):
         plan_data = plan(
@@ -459,6 +554,175 @@ class TestExistingGroupOwnership:
         assert "live:declared-resource-inventory" in failed_checks(report)
         assert "resources/registry[0]" in str(report.violations[-1])
         assert "resources/registry[1]" in str(report.violations[-1])
+
+    def test_allows_one_declared_resource_to_require_an_exact_live_count(self, monkeypatch):
+        plan_data = plan(
+            allow_existing_resource_group=True,
+            tags=self.OWNERSHIP_TAGS,
+            resources=[
+                {
+                    "name": "apis",
+                    "scope": "providers/Microsoft.ApiManagement/service/gateway/apis/foundry-*",
+                    "expected_live_count": 2,
+                }
+            ],
+            identities=[],
+            role_assignments=[],
+        )
+        resources = [
+            {
+                "id": (
+                    "/subscriptions/redacted/resourceGroups/rg-contoso-agents/providers/"
+                    f"Microsoft.ApiManagement/service/gateway/apis/foundry-{name}"
+                )
+            }
+            for name in ("travel", "support")
+        ]
+        self._patch_live(monkeypatch, tags=self.OWNERSHIP_TAGS, resources=resources)
+        assert boundary.check_live(boundary.check_plan(plan_data), plan_data).ok
+
+    def test_allows_a_declared_planned_resource_to_be_absent(self, monkeypatch):
+        plan_data = plan(
+            allow_existing_resource_group=True,
+            tags=self.OWNERSHIP_TAGS,
+            resources=[
+                {
+                    "name": "planned",
+                    "scope": "providers/Microsoft.App/containerApps/planned",
+                    "required_live": False,
+                }
+            ],
+            identities=[],
+            role_assignments=[],
+        )
+        self._patch_live(monkeypatch, tags=self.OWNERSHIP_TAGS, resources=[])
+        assert boundary.check_live(boundary.check_plan(plan_data), plan_data).ok
+
+    def test_expands_wildcard_inventory_collection_from_live_parent(self):
+        parent = "providers/microsoft.storage/storageaccounts/contosoagentsgenerated"
+        assert boundary._expand_inventory_scope(
+            "providers/microsoft.storage/storageaccounts/contosoagents*/blobservices/default/containers",
+            {parent: {"id": "redacted"}},
+        ) == [f"{parent}/blobservices/default/containers"]
+
+    def test_arm_collection_inventory_includes_undeclared_siblings(self, monkeypatch):
+        account_scope = "providers/microsoft.cognitiveservices/accounts/foundry"
+        collection = f"{account_scope}/deployments"
+        declared_scope = f"{collection}/travel-model"
+        unexpected_scope = f"{collection}/undeclared-model"
+        plan_data = plan(
+            resources=[
+                {"name": "account", "scope": account_scope},
+                {
+                    "name": "model",
+                    "scope": declared_scope,
+                    "inventory_api_version": "2024-10-01",
+                    "inventory_collection": collection,
+                },
+            ]
+        )
+        live_resources = {
+            account_scope: {
+                "id": (
+                    "/subscriptions/redacted/resourceGroups/rg-contoso-agents/"
+                    f"{account_scope}"
+                )
+            }
+        }
+        next_link = (
+            "https://management.azure.com/subscriptions/redacted/resourceGroups/"
+            f"rg-contoso-agents/{collection}?page=2"
+        )
+
+        def run(arguments):
+            if arguments[:2] == ["account", "show"]:
+                return {"id": "redacted"}
+            if arguments[:2] == ["rest", "--method"]:
+                if arguments[-1] == next_link:
+                    return {
+                        "value": [
+                            {
+                                "id": (
+                                    "/subscriptions/redacted/resourceGroups/"
+                                    f"rg-contoso-agents/{unexpected_scope}"
+                                )
+                            }
+                        ]
+                    }
+                return {
+                    "value": [
+                        {
+                            "id": (
+                                "/subscriptions/redacted/resourceGroups/"
+                                f"rg-contoso-agents/{declared_scope}"
+                            )
+                        }
+                    ],
+                    "nextLink": next_link,
+                }
+            pytest.fail(f"unexpected Azure CLI read: {arguments}")
+
+        monkeypatch.setattr(boundary.azure_cli, "run", run)
+
+        boundary._augment_declared_inventory(
+            boundary.check_plan(plan_data),
+            plan_data,
+            live_resources,
+        )
+
+        assert declared_scope in live_resources
+        assert unexpected_scope in live_resources
+
+    def test_foundry_agent_inventory_lists_undeclared_siblings(self, monkeypatch):
+        agent_parent = (
+            "providers/microsoft.cognitiveservices/accounts/foundry/projects/travel/agents"
+        )
+        declared_scope = f"{agent_parent}/contoso-travel"
+        plan_data = plan(
+            resources=[
+                {
+                    "name": "travel-agent",
+                    "scope": declared_scope,
+                    "inventory_data_plane": "foundry_agent",
+                }
+            ]
+        )
+        monkeypatch.setattr(
+            boundary.azure_cli,
+            "run",
+            lambda arguments: {"accessToken": "redacted"}
+            if arguments[:3] == ["account", "get-access-token", "--scope"]
+            else pytest.fail(f"unexpected Azure CLI read: {arguments}"),
+        )
+
+        class Response:
+            status_code = 200
+
+            @staticmethod
+            def raise_for_status():
+                return None
+
+            @staticmethod
+            def json():
+                return {
+                    "data": [
+                        {"name": "contoso-travel"},
+                        {"name": "undeclared-agent"},
+                    ],
+                    "has_more": False,
+                }
+
+        monkeypatch.setattr(boundary.requests, "get", lambda *_args, **_kwargs: Response())
+        live_resources = {}
+
+        boundary._augment_declared_inventory(
+            boundary.check_plan(plan_data),
+            plan_data,
+            live_resources,
+        )
+
+        assert declared_scope in live_resources
+        assert f"{agent_parent}/undeclared-agent" in live_resources
 
     def test_rejects_failed_subscription_inventory(self, monkeypatch):
         def fail(_args):
@@ -578,6 +842,47 @@ class TestExistingGroupRoleAssignments:
                 self.assignment(role="Reader", principal="external-group-principal")
             ],
         )
+        assert boundary.check_live(boundary.check_plan(plan_data), plan_data).ok
+
+    def test_accepts_an_absent_optional_external_principal(self, monkeypatch):
+        monkeypatch.delenv("SRE_OPERATOR_GROUP_OBJECT_ID", raising=False)
+        plan_data = self.owned_plan()
+        plan_data["external_principals"] = [
+            {
+                "name": "operator-group",
+                "object_id_environment": "SRE_OPERATOR_GROUP_OBJECT_ID",
+                "required_live": False,
+            }
+        ]
+        plan_data["role_assignments"] = [
+            {
+                "name": "operator-reads-foundry",
+                "principal": "operator-group",
+                "role": "Reader",
+                "scope": "providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry",
+                "required_live": False,
+            }
+        ]
+        TestExistingGroupOwnership._patch_live(
+            monkeypatch,
+            tags=self.OWNERSHIP_TAGS,
+            resources=self.resources(),
+            identities=[self.resources()[1]],
+            role_assignments=[],
+        )
+        assert boundary.check_live(boundary.check_plan(plan_data), plan_data).ok
+
+    def test_accepts_an_absent_optional_role_assignment(self, monkeypatch):
+        plan_data = self.owned_plan()
+        plan_data["role_assignments"][0]["required_live"] = False
+        TestExistingGroupOwnership._patch_live(
+            monkeypatch,
+            tags=self.OWNERSHIP_TAGS,
+            resources=self.resources(),
+            identities=[self.resources()[1]],
+            role_assignments=[],
+        )
+
         assert boundary.check_live(boundary.check_plan(plan_data), plan_data).ok
 
     def test_ignores_assignments_in_a_prefix_named_sibling_group(self, monkeypatch):

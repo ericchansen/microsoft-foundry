@@ -1,7 +1,7 @@
 # Sources
 
 Every product, behaviour and pricing claim on this site traces to a first-party
-Microsoft page. All links were verified on **2026-08-25**.
+Microsoft page. All links were verified on **2026-08-31**.
 
 Where a capability is in **public preview** it is labelled as such wherever it
 appears. Preview features can change without notice; re-check the source before
@@ -16,6 +16,7 @@ relying on one.
 | Agent Service limits, quotas and regions | <https://learn.microsoft.com/azure/foundry/agents/concepts/limits-quotas-regions> |
 | Model quotas and limits | <https://learn.microsoft.com/azure/foundry/openai/quotas-limits> |
 | Prompt agent quickstart | <https://learn.microsoft.com/azure/foundry/agents/quickstarts/prompt-agent> |
+| Prompt-agent OpenAPI tools and authentication | <https://learn.microsoft.com/azure/foundry/agents/how-to/tools/openapi> |
 | Client-side agent tracing | <https://learn.microsoft.com/azure/foundry/observability/how-to/trace-agent-client-side> |
 | Azure Developer CLI evaluation | <https://learn.microsoft.com/azure/foundry/observability/how-to/azure-developer-cli-evaluation> |
 | Agent Framework hosted agents | <https://learn.microsoft.com/azure/foundry/how-to/develop/framework-hosted-agents> |
