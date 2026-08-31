@@ -30,7 +30,12 @@ resource gateway 'Microsoft.ApiManagement/service@2024-05-01' = {
     notificationSenderEmail: 'apimgmt-noreply@mail.windowsazure.com'
     publicNetworkAccess: 'Enabled'
     virtualNetworkType: 'None'
+    natGatewayState: 'Enabled'
+    developerPortalStatus: 'Disabled'
+    legacyPortalStatus: 'Disabled'
     customProperties: {
+      'Microsoft.WindowsAzure.ApiManagement.Gateway.Protocols.Server.Http2': 'False'
+      'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Backend.Protocols.Ssl30': 'False'
       'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Protocols.Tls10': 'False'
       'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Protocols.Tls11': 'False'
       'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Backend.Protocols.Tls10': 'False'

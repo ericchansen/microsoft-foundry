@@ -328,6 +328,26 @@ def test_deployment_target_is_derived_from_relative_boundary(repo_root: Path) ->
     assert target.endpoint.endswith("/api/projects/research")
 
 
+def test_hosted_manifest_uses_a_prebuilt_digest_pinned_image(repo_root: Path) -> None:
+    manifest = yaml.safe_load(
+        (
+            repo_root
+            / "deployment"
+            / "hosted"
+            / "research"
+            / "azure.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    research = manifest["services"]["contoso-research"]
+    assert research["image"] == "${CONTOSO_RESEARCH_IMAGE}"
+    assert research["docker"]["remoteBuild"] is True
+    assert [
+        name
+        for name, service in manifest["services"].items()
+        if service["host"] == "azure.ai.project"
+    ] == ["research-project"]
+
+
 def test_predeploy_requires_a_clean_live_boundary(repo_root: Path, monkeypatch) -> None:
     observed = {}
 

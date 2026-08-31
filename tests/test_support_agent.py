@@ -71,6 +71,9 @@ def test_unified_config_uses_current_hosted_responses_contract() -> None:
     assert agent["kind"] == "hosted"
     assert agent["protocols"] == [{"protocol": "responses", "version": "2.0.0"}]
     assert agent["agentEndpoint"]["authorizationSchemes"] == [{"type": "Entra"}]
+    assert agent["agentEndpoint"]["versionSelector"]["versionSelectionRules"] == [
+        {"type": "FixedRatio", "agentVersion": "2", "trafficPercentage": 100}
+    ]
     assert config["services"]["support-project"]["endpoint"] == "${AZURE_AI_PROJECT_ENDPOINT}"
     assert agent["uses"] == ["support-project"]
     assert agent["env"]["CONTOSO_SUPPORT_PRINCIPAL_OID"] == "OID-AMER-SUPLEAD-01"
@@ -82,13 +85,36 @@ def test_unified_config_uses_current_hosted_responses_contract() -> None:
         "path": "./Dockerfile",
         "context": ".",
         "platform": "linux/amd64",
-        "remoteBuild": False,
+        "remoteBuild": True,
     }
     assert agent["image"] == "${CONTOSO_SUPPORT_IMAGE}"
     assert (REPO_ROOT / "Dockerfile").is_file()
     assert not (REPO_ROOT / "agents" / "contoso-support" / "Dockerfile").exists()
     assert not (REPO_ROOT / "agent.yaml").exists()
     assert not (REPO_ROOT / "agent.manifest.yaml").exists()
+
+
+def test_support_deployment_manifest_has_one_foundry_project() -> None:
+    manifest = yaml.safe_load(
+        (
+            REPO_ROOT
+            / "deployment"
+            / "hosted"
+            / "support"
+            / "azure.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    assert [
+        name
+        for name, service in manifest["services"].items()
+        if service["host"] == "azure.ai.project"
+    ] == ["support-project"]
+    assert manifest["services"]["contoso-support"]["image"] == "${CONTOSO_SUPPORT_IMAGE}"
+    assert manifest["services"]["contoso-support"]["agentEndpoint"][
+        "versionSelector"
+    ]["versionSelectionRules"] == [
+        {"type": "FixedRatio", "agentVersion": "2", "trafficPercentage": 100}
+    ]
 
 
 def test_hosted_config_emits_distinct_nonsensitive_genai_telemetry() -> None:
@@ -126,6 +152,22 @@ def test_live_workflow_pins_shared_registry_image_and_never_supplies_identity_he
     assert '${{ inputs.confirm_resource_group }}' not in workflow.split("run: |", maxsplit=1)[1]
     assert "cloud_RoleName == 'contoso-support'" in workflow
     assert 'echo "FOUNDRY_LOCATION=' in workflow
+    assert "AZURE_GITHUB_OIDC_SUBJECT: ${{ secrets.AZURE_GITHUB_OIDC_SUBJECT }}" in workflow
+    assert 'test -n "$AZURE_GITHUB_OIDC_SUBJECT"' in workflow
+    assert "- name: Preserve the immutable budget start date" in workflow
+    assert 'echo "BUDGET_START_DATE=$budget_start" >> "$GITHUB_ENV"' in workflow
+    assert "|| true" not in workflow
+    assert 'test "$budget_status" -eq 3' in workflow
+    assert 'grep -Fq "Code: 404"' in workflow
+    assert "No budget found matching budgetName: contoso-agents-monthly," in workflow
+    assert "grep -Eqi" not in workflow
+    for deployment in (
+        "travel-gpt-5-4-mini",
+        "contoso-field-model",
+        "support-gpt-5-4-mini",
+        "gpt-5.4-mini-2026-03-17",
+    ):
+        assert f'"deployment_name":"{deployment}"' in workflow
     assert 'azd env set AZURE_LOCATION "$FOUNDRY_LOCATION"' in workflow
     assert "azd deploy contoso-support --no-prompt" in workflow
     assert "--enable-module optional-control-plane" in workflow

@@ -78,6 +78,16 @@ resources:
     kind: Microsoft.CognitiveServices/accounts/projects/agents
     scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/projects/travel/agents/contoso-travel
     inventory_data_plane: foundry_agent
+  - name: support-hosted-agent
+    kind: Microsoft.CognitiveServices/accounts/projects/agents
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/projects/support/agents/contoso-support
+    inventory_data_plane: foundry_agent
+    required_live: false
+  - name: research-hosted-agent
+    kind: Microsoft.CognitiveServices/accounts/projects/agents
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/projects/research/agents/contoso-research
+    inventory_data_plane: foundry_agent
+    required_live: false
   - name: travel-traffic-environment
     kind: Microsoft.App/managedEnvironments
     scope: providers/Microsoft.App/managedEnvironments/contoso-agents-traffic-env
@@ -315,6 +325,10 @@ role_assignments:
     role: Privileged Monitoring Data Reader
     principal: support-project
     scope: providers/microsoft.insights/components/contoso-agents-insights
+  - name: support-pulls-agent-images
+    role: AcrPull
+    principal: support-project
+    scope: providers/Microsoft.ContainerRegistry/registries/contosoagents*
   - name: research-reads-logs
     role: Log Analytics Reader
     principal: research-project
@@ -327,6 +341,10 @@ role_assignments:
     role: Privileged Monitoring Data Reader
     principal: research-project
     scope: providers/microsoft.insights/components/contoso-agents-insights
+  - name: research-pulls-agent-images
+    role: AcrPull
+    principal: research-project
+    scope: providers/Microsoft.ContainerRegistry/registries/contosoagents*
   - name: platform-reads-logs
     role: Log Analytics Reader
     principal: platform-project
