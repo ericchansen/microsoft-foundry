@@ -26,9 +26,9 @@ resource keyVault 'Microsoft.KeyVault/vaults@2025-05-01' = {
     enabledForTemplateDeployment: false
     networkAcls: {
       bypass: 'AzureServices'
-      defaultAction: 'Allow'
+      defaultAction: 'Deny'
     }
-    publicNetworkAccess: 'Enabled'
+    publicNetworkAccess: 'Disabled'
     sku: {
       family: 'A'
       name: 'standard'
@@ -54,7 +54,7 @@ resource storage 'Microsoft.Storage/storageAccounts@2025-08-01' = {
     defaultToOAuthAuthentication: true
     dnsEndpointType: 'Standard'
     minimumTlsVersion: 'TLS1_2'
-    publicNetworkAccess: 'Enabled'
+    publicNetworkAccess: 'Disabled'
     supportsHttpsTrafficOnly: true
   }
 }

@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
-name: contoso-agent-platform
+name: contoso-research-hosted
 resourceGroup: rg-contoso-agents
 
 requiredVersions:
@@ -9,19 +9,6 @@ requiredVersions:
     azure.ai.projects: ">=1.0.0-beta.4"
 
 services:
-  support-project:
-    host: azure.ai.project
-    endpoint: ${AZURE_AI_PROJECT_ENDPOINT}
-    deployments:
-      - name: support-gpt-5-4-mini
-        model:
-          format: OpenAI
-          name: gpt-5.4-mini
-          version: "2026-03-17"
-        sku:
-          name: GlobalStandard
-          capacity: 10
-
   research-project:
     host: azure.ai.project
     endpoint: ${CONTOSO_RESEARCH_PROJECT_ENDPOINT}
@@ -34,47 +21,6 @@ services:
         sku:
           name: GlobalStandard
           capacity: 10
-
-  contoso-support:
-    host: azure.ai.agent
-    project: .
-    language: docker
-    docker:
-      path: ./Dockerfile
-      context: .
-      platform: linux/amd64
-      remoteBuild: true
-    image: ${CONTOSO_SUPPORT_IMAGE}
-    uses:
-      - support-project
-    kind: hosted
-    name: contoso-support
-    description: Multi-agent support investigation over canonical synthetic Contoso data.
-    startupCommand: python -m contoso_foundry.support_agent.runtime
-    protocols:
-      - protocol: responses
-        version: 2.0.0
-    env:
-      MICROSOFT_FOUNDRY_MODEL_DEPLOYMENT_NAME: ${MICROSOFT_FOUNDRY_MODEL_DEPLOYMENT_NAME}
-      CONTOSO_TENANT_KEY: TID-CONTOSO-01
-      CONTOSO_SUPPORT_PRINCIPAL_OID: OID-AMER-SUPLEAD-01
-      OTEL_SERVICE_NAME: contoso-support
-      ENABLE_INSTRUMENTATION: "true"
-      ENABLE_SENSITIVE_DATA: "false"
-    container:
-      resources:
-        cpu: "0.5"
-        memory: 1Gi
-    agentEndpoint:
-      protocols:
-        - responses
-      authorizationSchemes:
-        - type: Entra
-      versionSelector:
-        versionSelectionRules:
-          - type: FixedRatio
-            agentVersion: "2"
-            trafficPercentage: 100
 
   contoso-research:
     host: azure.ai.agent
@@ -128,7 +74,3 @@ services:
           run: PYTHONPATH=src python -m contoso_foundry.research.deployment
           continueOnError: false
           interactive: false
-
-infra:
-  provider: bicep
-  path: ./infra

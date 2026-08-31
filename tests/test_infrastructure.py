@@ -99,7 +99,9 @@ def test_gateway_uses_basic_v2_in_selected_region(infra):
 
 def test_gateway_has_owned_identity_and_no_secret(infra):
     assert "type: 'SystemAssigned'" in infra["gateway"]
-    assert "publisherEmail: budgetContactEmails[0]" in infra["main"]
+    assert "publisherEmail: apiManagementPublisherEmail" in infra["main"]
+    assert "natGatewayState: 'Enabled'" in infra["gateway"]
+    assert "developerPortalStatus: 'Disabled'" in infra["gateway"]
     assert "password" not in infra["gateway"].lower()
     assert "secret" not in infra["gateway"].lower()
 
@@ -228,7 +230,6 @@ def test_shared_acr_requires_identity_and_supports_hosted_agent_images(infra):
     assert "name: 'Basic'" in infra["data"]
     assert "adminUserEnabled: false" in infra["data"]
     assert "anonymousPullEnabled: false" in infra["data"]
-    assert "publicNetworkAccess: 'Enabled'" in infra["data"]
     assert "retentionPolicy:" in infra["data"]
     assert "privateEndpoints@" not in infra["data"]
     assert "privateDnsZones@" not in infra["data"]

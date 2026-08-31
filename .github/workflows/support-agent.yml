@@ -27,6 +27,13 @@ jobs:
     env:
       AZURE_RESOURCE_GROUP: rg-contoso-agents
       BUDGET_CONTACT_EMAIL: ${{ secrets.BUDGET_CONTACT_EMAIL }}
+      APIM_PUBLISHER_EMAIL: ${{ secrets.APIM_PUBLISHER_EMAIL }}
+      AZURE_GITHUB_OIDC_SUBJECT: ${{ secrets.AZURE_GITHUB_OIDC_SUBJECT }}
+      EXISTING_MODEL_DEPLOYMENTS_JSON: >-
+        [{"deployment_name":"travel-gpt-5-4-mini","model_name":"gpt-5.4-mini","version":"2026-03-17","format":"OpenAI","rai_policy_name":"contoso-agents-guardrails"},
+        {"deployment_name":"contoso-field-model","model_name":"gpt-4.1-mini","version":"2025-04-14","format":"OpenAI","rai_policy_name":"Microsoft.DefaultV2"},
+        {"deployment_name":"support-gpt-5-4-mini","model_name":"gpt-5.4-mini","version":"2026-03-17","format":"OpenAI","rai_policy_name":"Microsoft.DefaultV2"},
+        {"deployment_name":"gpt-5.4-mini-2026-03-17","model_name":"gpt-5.4-mini","version":"2026-03-17","format":"OpenAI","rai_policy_name":"Microsoft.DefaultV2"}]
       CONFIRM_RESOURCE_GROUP: ${{ inputs.confirm_resource_group }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -50,6 +57,7 @@ jobs:
         run: |
           test "$CONFIRM_RESOURCE_GROUP" = "$AZURE_RESOURCE_GROUP"
           test -n "$BUDGET_CONTACT_EMAIL"
+          test -n "$AZURE_GITHUB_OIDC_SUBJECT"
           foundry boundary --no-live
 
       - name: Azure login with workload identity federation
@@ -77,6 +85,28 @@ jobs:
           azd env set CONTOSO_SUPPORT_IMAGE \
             "registry.invalid/contoso-support@sha256:0000000000000000000000000000000000000000000000000000000000000000"
           azd env set AZD_AGENT_SKIP_ACR true
+
+      - name: Preserve the immutable budget start date
+        run: |
+          if budget_result="$(az consumption budget show \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --budget-name "contoso-agents-monthly" \
+            --only-show-errors --output json 2>&1)"; then
+            budget_start="$(jq -r '.timePeriod.startDate // empty' <<<"$budget_result")"
+            test -n "$budget_start"
+          else
+            budget_status=$?
+            if test "$budget_status" -eq 3 &&
+              grep -Fq "Code: 404" <<<"$budget_result" &&
+              grep -Fq "No budget found matching budgetName: contoso-agents-monthly," <<<"$budget_result"; then
+              budget_start="$(date -u +%Y-%m-01T00:00:00Z)"
+            else
+              echo "Unable to read the existing budget start date." >&2
+              exit 1
+            fi
+          fi
+          unset budget_result
+          echo "BUDGET_START_DATE=$budget_start" >> "$GITHUB_ENV"
 
       - name: Verify live boundary before every mutation
         run: |

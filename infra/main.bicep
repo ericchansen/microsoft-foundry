@@ -27,6 +27,10 @@ param githubOidcSubject string
 @minLength(1)
 param budgetContactEmails array
 
+@description('Existing API Management publisher email retained across idempotent deployments.')
+@minLength(1)
+param apiManagementPublisherEmail string
+
 @description('Microsoft Entra group object ID granted SRE Agent Standard User on the isolated agent.')
 @secure()
 param sreOperatorGroupObjectId string = ''
@@ -50,6 +54,11 @@ param budgetStartDate string = utcNow('yyyy-MM-01')
 var logAnalyticsReaderRoleId = '73c42c96-874c-492b-b04d-ab87d138a893'
 var privilegedMonitoringDataReaderRoleId = 'dbc9c667-e97f-4491-aee6-90b9cf960190'
 var foundryUserRoleId = '53ca6127-db72-4b80-b1b0-d745d6d5456d'
+var acrPullRoleId = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
+var hostedProjectNames = [
+  'support'
+  'research'
+]
 @description('Tags applied to every resource that supports tags.')
 param tags object = {
   project: 'contoso-agents'
@@ -59,6 +68,8 @@ param tags object = {
 }
 
 var gatewayConfig = loadYamlContent('../config/gateway.yaml')
+var compactPrefix = replace(resourcePrefix, '-', '')
+var resourceUniqueness = take(uniqueString(resourceGroup().id), 8)
 
 module monitoring 'modules/monitoring.bicep' = {
   name: 'monitoring'
@@ -76,7 +87,7 @@ module gateway 'modules/gateway.bicep' = {
   params: {
     location: location
     resourcePrefix: resourcePrefix
-    publisherEmail: budgetContactEmails[0]
+    publisherEmail: apiManagementPublisherEmail
     logAnalyticsWorkspaceResourceId: monitoring.outputs.logAnalyticsWorkspaceResourceId
     tags: tags
   }
@@ -178,6 +189,22 @@ resource projectFoundryUsers 'Microsoft.Authorization/roleAssignments@2022-04-01
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', foundryUserRoleId)
   }
 }]
+
+resource containerRegistry 'Microsoft.ContainerRegistry/registries@2025-11-01' existing = {
+  name: take('${compactPrefix}${resourceUniqueness}', 50)
+}
+
+resource hostedProjectRegistryPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = [
+  for (projectName, index) in projectNames: if (contains(hostedProjectNames, projectName)) {
+    name: guid(containerRegistry.id, foundryProjects[index].id, acrPullRoleId)
+    scope: containerRegistry
+    properties: {
+      principalId: foundryProjects[index].identity.principalId
+      principalType: 'ServicePrincipal'
+      roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', acrPullRoleId)
+    }
+  }
+]
 resource projectAppInsightsConnections 'Microsoft.CognitiveServices/accounts/projects/connections@2026-05-01' = [for (projectName, index) in projectNames: {
   parent: foundryProjects[index]
   name: 'appinsights-${projectName}'

@@ -142,6 +142,22 @@ class TestHappyPath:
             assert entry["expected_live_count"] == 1
             assert entry["deployment_max_live_count"] == 2
 
+    def test_shipped_boundary_declares_every_agent_collection(self, repo_root):
+        shipped = boundary.load_plan(repo_root / "config" / "boundary.yaml")
+        agent_scopes = {
+            entry["scope"]
+            for entry in shipped["resources"]
+            if entry["kind"] == "Microsoft.CognitiveServices/accounts/projects/agents"
+        }
+        assert agent_scopes == {
+            "providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/"
+            "projects/travel/agents/contoso-travel",
+            "providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/"
+            "projects/support/agents/contoso-support",
+            "providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/"
+            "projects/research/agents/contoso-research",
+        }
+
 
 class TestDiagnosticTargets:
     """Where telemetry lands decides whether it leaves the boundary."""
