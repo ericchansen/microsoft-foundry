@@ -88,6 +88,10 @@ resources:
     scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/projects/research/agents/contoso-research
     inventory_data_plane: foundry_agent
     required_live: false
+  - name: field-external-agent
+    kind: Microsoft.CognitiveServices/accounts/projects/agents
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/projects/platform/agents/contoso-field
+    inventory_data_plane: foundry_agent
   - name: travel-traffic-environment
     kind: Microsoft.App/managedEnvironments
     scope: providers/Microsoft.App/managedEnvironments/contoso-agents-traffic-env
@@ -345,6 +349,10 @@ role_assignments:
     role: AcrPull
     principal: research-project
     scope: providers/Microsoft.ContainerRegistry/registries/contosoagents*
+  - name: research-hosted-invokes-project-model
+    role: Foundry User
+    principal: research-hosted-agent
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/projects/research
   - name: platform-reads-logs
     role: Log Analytics Reader
     principal: platform-project

@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 import requests
 import yaml
@@ -314,6 +314,43 @@ def _augment_declared_inventory(
                 agent_name = str(agent.get("name", "")).strip().lower()
                 if not agent_name:
                     raise ValueError("Foundry returned an agent without a name")
+                agent_url = (
+                    f"https://{account_name}.services.ai.azure.com/api/projects/"
+                    f"{project_name}/agents/{quote(agent_name, safe='')}"
+                )
+                detail_response = requests.get(
+                    agent_url,
+                    params={"api-version": "v1"},
+                    headers={"Authorization": f"Bearer {token}"},
+                    timeout=30,
+                )
+                detail_response.raise_for_status()
+                detail = detail_response.json()
+                endpoint = detail.get("agent_endpoint") or {}
+                selector = endpoint.get("version_selector") or {}
+                rules = selector.get("version_selection_rules") or []
+                principal_id = ""
+                if (
+                    len(rules) == 1
+                    and isinstance(rules[0], dict)
+                    and str(rules[0].get("agent_version", "")).strip()
+                    not in {"", "@latest"}
+                ):
+                    version = quote(str(rules[0]["agent_version"]), safe="")
+                    version_response = requests.get(
+                        f"{agent_url}/versions/{version}",
+                        params={"api-version": "v1"},
+                        headers={"Authorization": f"Bearer {token}"},
+                        timeout=30,
+                    )
+                    version_response.raise_for_status()
+                    version_payload = version_response.json()
+                    principal_id = str(
+                        (version_payload.get("instance_identity") or {}).get(
+                            "principal_id",
+                            "",
+                        )
+                    ).strip()
                 agent_scope = (
                     "providers/microsoft.cognitiveservices/accounts/"
                     f"{account_name}/projects/{project_name}/agents/{agent_name}"
@@ -322,6 +359,7 @@ def _augment_declared_inventory(
                     "id": f"/resourceGroups/{report.resource_group}/{agent_scope}",
                     "type": "Microsoft.CognitiveServices/accounts/projects/agents",
                     "name": agent_name,
+                    "principalId": principal_id,
                 }
             if not payload.get("has_more"):
                 break
