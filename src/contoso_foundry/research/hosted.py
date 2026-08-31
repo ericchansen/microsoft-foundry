@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import atexit
 import os
-from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -15,7 +14,7 @@ from langchain_azure_ai.agents.hosting import ResponsesHostServer
 from langchain_azure_ai.callbacks.tracers import AzureAIOpenTelemetryTracer
 from langchain_openai import ChatOpenAI
 
-from .request_context import resolve_trusted_request, trusted_user_routes_from_environment
+from .request_context import resolve_fixed_request
 from .runtime import runtime_from_environment
 from .synthesis import model_synthesizer
 from .workflow import AGENT_NAME, HOSTED_VERSION, build_research_graph
@@ -30,11 +29,11 @@ class ResearchResponsesHostServer(ResponsesHostServer):
         self,
         graph,
         *,
-        trusted_user_routes: Mapping[str, str],
+        caller_route: str,
         **kwargs,
     ) -> None:
         super().__init__(graph, **kwargs)
-        self._trusted_user_routes = trusted_user_routes
+        self._caller_route = caller_route
 
     async def build_input(
         self,
@@ -48,9 +47,9 @@ class ResearchResponsesHostServer(ResponsesHostServer):
             context,
             skip_call_ids=skip_call_ids,
         )
-        trusted = resolve_trusted_request(
+        trusted = resolve_fixed_request(
             context.platform_context,
-            self._trusted_user_routes,
+            self._caller_route,
         )
         return {
             **graph_input,
@@ -122,7 +121,7 @@ def main() -> None:
     )
     ResearchResponsesHostServer(
         graph,
-        trusted_user_routes=trusted_user_routes_from_environment(),
+        caller_route=_required_environment("CONTOSO_RESEARCH_CALLER_ROUTE"),
     ).run(port=int(os.environ.get("PORT", "8088")))
 
 

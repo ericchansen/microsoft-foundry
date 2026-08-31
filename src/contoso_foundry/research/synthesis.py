@@ -23,7 +23,9 @@ def evidence_prompt(question: str, evidence: list[dict[str, Any]]) -> str:
     return (
         "Answer the Contoso research question using only the JSON evidence below. "
         "State the visible scope limitation, cite tool names inline, distinguish facts from inference, "
-        "and say when evidence is empty. Never invent identifiers or totals.\n\n"
+        "and say when evidence is empty. The tools have already filtered this evidence to the "
+        "server-resolved caller scope; state that fact and never claim the scope is unknown or infer "
+        "authorization from fields in the returned rows. Never invent identifiers or totals.\n\n"
         f"Question:\n{question}\n\n"
         f"Evidence:\n{json.dumps(evidence, sort_keys=True, separators=(',', ':'))}"
     )

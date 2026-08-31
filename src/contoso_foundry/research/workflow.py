@@ -17,7 +17,7 @@ from contoso_foundry.toolbox.tools import Toolbox
 
 AGENT_NAME = "contoso-research"
 AGENT_VERSION = "1.0.0"
-HOSTED_VERSION = "1"
+HOSTED_VERSION = "4"
 PROTOCOL_VERSION = "2.0.0"
 REQUIRED_CONTRACT_VERSIONS = {
     "catalog": "1.0.0",

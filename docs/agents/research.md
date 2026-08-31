@@ -58,12 +58,12 @@ The deployment pins four independent versions:
 | Contract | Version |
 | --- | --- |
 | Agent behavior | `1.0.0` |
-| Hosted agent version | `1` |
+| Hosted agent version | `4` |
 | Responses protocol | `2.0.0` |
 | Toolbox capabilities | `1.0.0` |
 | Model | `gpt-5.4-mini`, `2026-03-17`, Global Standard |
 
-The Entra-authorized endpoint sends 100% of traffic to hosted version `1`; it
+The Entra-authorized endpoint sends 100% of traffic to hosted version `4`; it
 does not use `@latest`. At startup the container compares the platform-injected
 agent name and version with that route and exits on a mismatch. The canonical
 data lock and every Toolbox contract version are verified before the graph is
@@ -161,5 +161,5 @@ canonical route names. A missing, malformed, empty, or unknown mapping prevents
 the hosted server from starting.
 
 After deployment, smoke tests must call the protocol-specific Responses endpoint
-for hosted version `1` and use only synthetic prompts from the golden suite. Any
+for hosted version `4` and use only synthetic prompts from the golden suite. Any
 provisioning, API, evaluation, or smoke failure blocks promotion.

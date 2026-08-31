@@ -98,3 +98,17 @@ def resolve_trusted_request(
     if caller_route is None:
         raise HostedIdentityError("hosted request identity is not authorized")
     return TrustedRequestContext(caller_route=caller_route, call_id=call_id)
+
+
+def resolve_fixed_request(
+    context: PlatformIdentityContext,
+    caller_route: str,
+) -> TrustedRequestContext:
+    """Require platform identity context while binding scope only from deployment."""
+    if caller_route not in CANONICAL_PERSONA_ROUTES:
+        raise HostedIdentityError("hosted deployment route is invalid")
+    if not isinstance(context.user_id_key, str) or not context.user_id_key.strip():
+        raise HostedIdentityError("hosted request identity is required")
+    if not isinstance(context.call_id, str) or not context.call_id.strip():
+        raise HostedIdentityError("hosted request call context is required")
+    return TrustedRequestContext(caller_route=caller_route, call_id=context.call_id)
