@@ -337,7 +337,7 @@ def test_promotion_requires_trusted_run_digest_attestation_and_manifest(
     assert "validate-source" in implementation
     assert "sha256sum --check" in implementation
     assert "gh attestation verify" in implementation
-    assert "actions/attest@v4" in workflow
+    assert "actions/attest@" in workflow
     assert "validate-package" in implementation
     assert "actions/download-artifact" not in implementation
     assert workflow.count("uses: ./.github/actions/verify-concierge-artifact") == 3

@@ -158,6 +158,8 @@ def test_deploy_workflow_checks_live_boundary_after_login(infra):
     assert '--parameters existingModelDeployments="$EXISTING_MODEL_DEPLOYMENTS_JSON"' in infra["workflow"]
     assert "isinstance(json.loads" in infra["workflow"]
     assert "foundry gateway attest-model-deployments" in infra["workflow"]
+    assert 'if test "${{ inputs.operation }}" != "verify"; then' in infra["workflow"]
+    assert "optional_args+=(--deployment-readiness)" in infra["workflow"]
 
 
 def test_gateway_backend_uses_managed_identity(infra):
@@ -354,6 +356,25 @@ def test_deploy_identity_can_create_everything_main_deploys(infra, repo_root):
         for entry in plan["role_assignments"]
     }
     assert ("Resource Policy Contributor", "github-deploy-identity", ".") in declared
+    assert (
+        "Foundry User",
+        "github-deploy-identity",
+        "providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry",
+    ) in declared
+    assert "resource deployFoundryUser" in infra["identity"]
+    assert (
+        "AcrPull",
+        "support-project",
+        "providers/Microsoft.ContainerRegistry/registries/contosoagents*",
+    ) in declared
+    assert (
+        "AcrPull",
+        "research-project",
+        "providers/Microsoft.ContainerRegistry/registries/contosoagents*",
+    ) in declared
+    assert "resource hostedProjectRegistryPull" in infra["main"]
+    assert "subject: githubOidcSubject" in infra["identity"]
+    assert "readEnvironmentVariable('AZURE_GITHUB_OIDC_SUBJECT')" in infra["params"]
 
 
 def test_no_compiled_arm_template_is_tracked(repo_root):

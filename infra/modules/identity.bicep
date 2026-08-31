@@ -7,11 +7,12 @@ param resourcePrefix string
 @description('Tags applied to managed identities.')
 param tags object
 
-@description('GitHub owner/repository allowed to request the deployment identity.')
-param githubRepository string
-
 @description('Protected GitHub environment allowed to request the deployment identity.')
 param githubEnvironment string
+
+@description('Exact GitHub OIDC subject configured by the repository or organization.')
+@secure()
+param githubOidcSubject string
 
 @description('Name of the Foundry account receiving the runtime role assignment.')
 param foundryAccountName string
@@ -43,7 +44,7 @@ resource githubFederatedCredential 'Microsoft.ManagedIdentity/userAssignedIdenti
       'api://AzureADTokenExchange'
     ]
     issuer: 'https://token.actions.githubusercontent.com'
-    subject: 'repo:${githubRepository}:environment:${githubEnvironment}'
+    subject: githubOidcSubject
   }
 }
 
@@ -99,6 +100,16 @@ resource deployFoundryProjectManager 'Microsoft.Authorization/roleAssignments@20
       'Microsoft.Authorization/roleDefinitions',
       foundryProjectManagerRoleId
     )
+  }
+}
+
+resource deployFoundryUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(foundryAccount.id, deployIdentity.id, foundryUserRoleId)
+  scope: foundryAccount
+  properties: {
+    principalId: deployIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', foundryUserRoleId)
   }
 }
 

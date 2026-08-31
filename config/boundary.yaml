@@ -259,6 +259,10 @@ role_assignments:
     role: Foundry Project Manager
     principal: github-deploy-identity
     scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/projects/support
+  - name: deploy-inventories-foundry
+    role: Foundry User
+    principal: github-deploy-identity
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry
   - name: deploy-pushes-agent-images
     role: AcrPush
     principal: github-deploy-identity

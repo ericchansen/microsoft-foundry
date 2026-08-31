@@ -8,8 +8,8 @@ param projectNames = [
   'research'
   'platform'
 ]
-param githubRepository = 'ericchansen/microsoft-foundry'
 param githubEnvironment = 'contoso-agents'
+param githubOidcSubject = readEnvironmentVariable('AZURE_GITHUB_OIDC_SUBJECT')
 param budgetContactEmails = [
   readEnvironmentVariable('BUDGET_CONTACT_EMAIL')
 ]

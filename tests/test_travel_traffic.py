@@ -149,7 +149,7 @@ def test_live_workflow_detects_optional_boundary_and_uploads_only_sanitized_evid
     assert "path: reports/travel-candidate.json" in workflow
     assert "foundry scan reports/travel-candidate.json" in workflow
     assert "--tag contoso-travel:ci" in workflow
-    assert workflow.count("docker/build-push-action@v6") == 1
+    assert workflow.count("docker/build-push-action@") == 1
     assert "provenance: mode=max" in workflow
     assert "sbom: true" in workflow
 

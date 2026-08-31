@@ -12,10 +12,10 @@ from typing import Any
 from contoso_foundry import azure_cli
 from contoso_foundry.boundary import (
     BoundaryReport,
+    check_live,
     check_plan,
     enabled_modules_from_environment,
     load_plan,
-    require_clean_live,
 )
 
 _PROJECT_SCOPE = re.compile(
@@ -176,12 +176,21 @@ def require_clean_live_boundary(
     boundary_path: Path,
     *,
     enabled_modules: set[str] | None = None,
+    deployment_readiness: bool = False,
 ) -> BoundaryReport:
     """Require the exact live inventory gate used by mutation entry points."""
-    try:
-        return require_clean_live(boundary_path, enabled_modules=enabled_modules)
-    except PermissionError as error:
-        raise DeploymentBoundaryError("the live ownership boundary is not clean") from error
+    plan = load_plan(boundary_path)
+    report = check_plan(plan)
+    if report.ok:
+        report = check_live(
+            report,
+            plan,
+            enabled_modules=enabled_modules,
+            allow_missing_declared=deployment_readiness,
+        )
+    if not report.ok:
+        raise DeploymentBoundaryError("the live ownership boundary is not clean")
+    return report
 
 
 def main() -> int:
@@ -213,6 +222,7 @@ def main() -> int:
     require_clean_live_boundary(
         repo_root / "config" / "boundary.yaml",
         enabled_modules=enabled_modules,
+        deployment_readiness=True,
     )
     target = verify_deployment_target(
         repo_root,
