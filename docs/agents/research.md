@@ -125,8 +125,8 @@ Run the local gates from the branch-local environment:
 
 ```powershell
 $env:PYTHONPATH = "src"
-.\.venv\Scripts\python -m contoso_foundry.research.evaluate
-.\.venv\Scripts\python -m pytest tests\test_research.py
+python -m contoso_foundry.research.evaluate
+python -m pytest tests\test_research.py
 docker build --file agents/research/Dockerfile --tag contoso-research:local .
 ```
 
@@ -137,12 +137,12 @@ agent manifests:
 
 ```powershell
 $env:PYTHONPATH = "src"
+$env:FOUNDRY_ENABLED_MODULES = "optional-control-plane"
 $routes = Get-Content .\internal\research-user-routes.json -Raw
 azd env set CONTOSO_RESEARCH_USER_ROUTE_ALLOWLIST $routes
-$endpoint = .\.venv\Scripts\python -m contoso_foundry.research.deployment --resolve
+$endpoint = python -m contoso_foundry.research.deployment `
+  --resolve --enable-module optional-control-plane
 azd env set CONTOSO_RESEARCH_PROJECT_ENDPOINT $endpoint
-# If optional Control Plane coverage exists:
-# $env:FOUNDRY_ENABLED_MODULES = "optional-control-plane"
 azd deploy contoso-research
 azd ai agent show contoso-research
 ```
@@ -160,6 +160,23 @@ keys are the platform-provided opaque user partition values and whose values are
 canonical route names. A missing, malformed, empty, or unknown mapping prevents
 the hosted server from starting.
 
-After deployment, smoke tests must call the protocol-specific Responses endpoint
-for hosted version `4` and use only synthetic prompts from the golden suite. Any
-provisioning, API, evaluation, or smoke failure blocks promotion.
+Read back the active version, sole 100-percent route, and Responses protocol
+without printing identity IDs:
+
+```powershell
+$endpoint = python -m contoso_foundry.research.deployment `
+  --resolve --enable-module optional-control-plane
+foundry support verify-deployment `
+  --project-endpoint $endpoint `
+  --agent-name contoso-research `
+  --version 4
+```
+
+The verifier is shared by both hosted agents even though the command group
+retains its original `support` name. For a live Responses smoke, use the
+`AGENT_CONTOSO_RESEARCH_RESPONSES_ENDPOINT` output in the same private `azd`
+environment that performed the deployment, send only a question from
+`config/research-evals.yaml`, and keep the endpoint and bearer token off-screen.
+If that deployment output is unavailable, use the deterministic evaluator and
+do not claim a fresh live invocation. Any provisioning, API, evaluation, or
+smoke failure blocks promotion.
