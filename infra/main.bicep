@@ -48,8 +48,8 @@ param monthlyBudgetUsd int = 500
 @description('Existing model deployments supplied explicitly by the model-owning dependency stack.')
 param existingModelDeployments array = []
 
-@description('Budget period start. Kept dynamic so deployments do not expire.')
-param budgetStartDate string = utcNow('yyyy-MM-01')
+@description('Immutable budget period start, read from the existing budget or selected once by the deployment workflow.')
+param budgetStartDate string
 
 var logAnalyticsReaderRoleId = '73c42c96-874c-492b-b04d-ab87d138a893'
 var privilegedMonitoringDataReaderRoleId = 'dbc9c667-e97f-4491-aee6-90b9cf960190'

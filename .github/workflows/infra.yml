@@ -142,6 +142,28 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Preserve the immutable budget start date
+        run: |
+          if budget_result="$(az consumption budget show \
+            --resource-group "$RESOURCE_GROUP" \
+            --budget-name "${RESOURCE_PREFIX}-monthly" \
+            --only-show-errors --output json 2>&1)"; then
+            budget_start="$(jq -r '.timePeriod.startDate // empty' <<<"$budget_result")"
+            test -n "$budget_start"
+          else
+            budget_status=$?
+            if test "$budget_status" -eq 3 &&
+              grep -Fq "Code: 404" <<<"$budget_result" &&
+              grep -Fq "No budget found matching budgetName: ${RESOURCE_PREFIX}-monthly," <<<"$budget_result"; then
+              budget_start="$(date -u +%Y-%m-01T00:00:00Z)"
+            else
+              echo "Unable to read the existing budget start date." >&2
+              exit 1
+            fi
+          fi
+          unset budget_result
+          echo "BUDGET_START_DATE=$budget_start" >> "$GITHUB_ENV"
+
       - name: Verify live ownership boundary
         run: |
           optional_args=()
