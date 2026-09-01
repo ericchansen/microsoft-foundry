@@ -10,8 +10,8 @@ Use the branch-local environment and run the static contracts first:
 
 ```powershell
 $env:PYTHONPATH = "src"
-.\.venv\Scripts\foundry.exe boundary --no-live
-.\.venv\Scripts\foundry.exe platform-inventory --no-live
+python -m contoso_foundry.cli boundary --no-live
+python -m contoso_foundry.cli platform-inventory --no-live
 az bicep lint --file infra\main.bicep
 az bicep build --file infra\main.bicep --stdout | Out-Null
 ```
@@ -37,7 +37,7 @@ concurrency key and repeats this check after Azure login.
 Price the exact optional combination before what-if or deployment:
 
 ```powershell
-.\.venv\Scripts\foundry.exe costs --enable-module approvals --enable-module sre
+python -m contoso_foundry.cli costs --enable-module approvals --enable-module sre
 ```
 
 The command enforces the environment's configured cost policy. If the optional
@@ -72,7 +72,7 @@ absolute role-assignment scope.
 ## Machine verification
 
 ```powershell
-.\.venv\Scripts\foundry.exe platform-inventory --include-optional
+python -m contoso_foundry.cli platform-inventory --include-optional
 ```
 
 The command queries each expected resource through Azure Resource Manager and
@@ -103,18 +103,77 @@ portal row rendered.
 
 ## Synthetic approval test
 
-Retrieve the HTTP trigger callback URL without storing or publishing it, then
-send only a fictional scenario:
+Run this only in a private terminal. The callback URL is a secret: the sequence
+keeps it in memory, never prints or writes it, and removes it in `finally`.
+The false case is accepted by the HTTP trigger with status 202 but must create
+no workflow run because its trigger condition fails. The true case must return
+only the fictional human-review envelope.
 
-```json
-{
-  "scenario": "Synthetic request to raise a fictional service limit",
-  "synthetic": true
+```powershell
+$workflowId = az resource show `
+  --resource-group rg-contoso-agents `
+  --resource-type Microsoft.Logic/workflows `
+  --name contoso-agents-approvals-loop --query id --output tsv
+$trigger = "Receive_synthetic_approval_scenario"
+$runsUrl = "https://management.azure.com$workflowId/runs?api-version=2016-06-01"
+$callback = az rest --method post `
+  --url "https://management.azure.com$workflowId/triggers/$trigger/listCallbackUrl?api-version=2016-06-01" `
+  --query value --output tsv
+if (-not $callback) { throw "The private callback URL was not resolved." }
+
+function Get-WorkflowRuns {
+  param([string]$Url)
+  $runs = @()
+  while ($Url) {
+    $page = az rest --method get --url $Url | ConvertFrom-Json
+    $runs += @($page.value)
+    $Url = $page.nextLink
+  }
+  return $runs
+}
+
+try {
+  $before = Get-WorkflowRuns -Url $runsUrl |
+    Sort-Object startTime -Descending |
+    Select-Object -First 1 -ExpandProperty name
+  $falseResponse = Invoke-WebRequest -Method Post -Uri $callback `
+    -ContentType "application/json" -SkipHttpErrorCheck `
+    -Body (@{
+      scenario = "Synthetic request that must not start the agent"
+      synthetic = $false
+    } | ConvertTo-Json -Compress)
+  if ($falseResponse.StatusCode -ne 202) {
+    throw "The false synthetic trigger did not return transport status 202."
+  }
+  Start-Sleep -Seconds 10
+  $afterFalse = Get-WorkflowRuns -Url $runsUrl |
+    Sort-Object startTime -Descending |
+    Select-Object -First 1 -ExpandProperty name
+  if ($afterFalse -ne $before) {
+    throw "synthetic=false created a workflow run."
+  }
+
+  $trueResponse = Invoke-RestMethod -Method Post -Uri $callback `
+    -ContentType "application/json" `
+    -Body (@{
+      scenario = "Synthetic request to raise a fictional service limit"
+      synthetic = $true
+    } | ConvertTo-Json -Compress)
+  if (
+    $trueResponse.message -ne "Synthetic agent loop completed; no change was executed." -or
+    $trueResponse.result.requiresHumanApproval -ne $true -or
+    $trueResponse.result.synthetic -ne $true -or
+    $trueResponse.result.agentLoopCompleted -ne $true
+  ) {
+    throw "The synthetic approval response was not the bounded review envelope."
+  }
+}
+finally {
+  Remove-Variable callback -ErrorAction SilentlyContinue
+  Remove-Variable trueResponse -ErrorAction SilentlyContinue
+  Remove-Variable falseResponse -ErrorAction SilentlyContinue
 }
 ```
 
-A successful response says that the synthetic agent loop completed and no
-change was executed. Its result has `requiresHumanApproval: true` and
-`synthetic: true`. Delete any local file that contains the callback URL after
-the test. Repeat the request with `synthetic: false`; the trigger must reject it
-without starting an agent or action run.
+Do not echo `$callback`, enable shell tracing, capture this terminal, or replace
+the fictional scenario with customer data.
