@@ -146,6 +146,9 @@ def test_each_project_has_an_explicit_gateway_route_and_connection(infra):
 
 def test_deploy_workflow_checks_live_boundary_after_login(infra):
     login = infra["workflow"].index("uses: azure/login@")
+    budget_start = infra["workflow"].index(
+        "- name: Preserve the immutable budget start date"
+    )
     live_boundary = infra["workflow"].index("- name: Verify live ownership boundary")
     catalog_attestation = infra["workflow"].index(
         "- name: Attest existing Foundry model deployments"
@@ -153,8 +156,19 @@ def test_deploy_workflow_checks_live_boundary_after_login(infra):
     what_if = infra["workflow"].index("- name: What-if")
     deploy = infra["workflow"].index("- name: Deploy")
 
-    assert login < live_boundary < catalog_attestation < what_if
-    assert login < live_boundary < catalog_attestation < deploy
+    assert login < budget_start < live_boundary < catalog_attestation < what_if
+    assert login < budget_start < live_boundary < catalog_attestation < deploy
+    assert "az consumption budget show" in infra["workflow"]
+    assert "|| true" not in infra["workflow"]
+    assert 'test "$budget_status" -eq 3' in infra["workflow"]
+    assert 'grep -Fq "Code: 404"' in infra["workflow"]
+    assert "No budget found matching budgetName: ${RESOURCE_PREFIX}-monthly," in infra["workflow"]
+    assert "grep -Eqi" not in infra["workflow"]
+    assert "Unable to read the existing budget start date." in infra["workflow"]
+    assert 'echo "BUDGET_START_DATE=$budget_start" >> "$GITHUB_ENV"' in infra["workflow"]
+    assert "param budgetStartDate string\n" in infra["main"]
+    assert "utcNow(" not in infra["main"]
+    assert "readEnvironmentVariable('BUDGET_START_DATE')" in infra["params"]
     assert "existing_model_deployments_json:" in infra["workflow"]
     assert 'default: "[]"' in infra["workflow"]
     assert '--parameters existingModelDeployments="$EXISTING_MODEL_DEPLOYMENTS_JSON"' in infra["workflow"]

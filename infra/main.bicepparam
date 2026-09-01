@@ -18,6 +18,7 @@ param existingModelDeployments = json(readEnvironmentVariable('EXISTING_MODEL_DE
 param deploySreAgent = false
 param deployApprovalsWorkflow = false
 param monthlyBudgetUsd = 500
+param budgetStartDate = readEnvironmentVariable('BUDGET_START_DATE')
 param tags = {
   project: 'contoso-agents'
   'managed-by': 'microsoft-foundry-demo'
