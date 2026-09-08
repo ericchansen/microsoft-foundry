@@ -154,6 +154,12 @@ resource guardrailBaseline 'Microsoft.CognitiveServices/accounts/raiPolicies@202
         blocking: true
       }
       {
+        name: 'Indirect Attack'
+        source: 'Prompt'
+        enabled: true
+        blocking: true
+      }
+      {
         name: 'Protected Material Text'
         source: 'Completion'
         enabled: true

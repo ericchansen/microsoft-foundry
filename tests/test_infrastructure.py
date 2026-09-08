@@ -207,6 +207,8 @@ def test_guardrail_policy_uses_stable_api_and_requires_deployment_attachment(inf
     assert "accounts/raiPolicies@2026-05-01" in infra["governance"]
     assert "basePolicyName: 'Microsoft.DefaultV2'" in infra["governance"]
     assert "name: 'Jailbreak'" in infra["governance"]
+    assert "name: 'Indirect Attack'" in infra["governance"]
+    assert "name: 'Protected Material Text'" in infra["governance"]
     assert "output guardrailPolicyName" in infra["governance"]
     assert "output guardrailPolicyName string = modelGovernance.outputs.guardrailPolicyName" in infra["main"]
     guardrail_output = "output guardrailPolicyName string = governance.outputs.guardrailPolicyName"

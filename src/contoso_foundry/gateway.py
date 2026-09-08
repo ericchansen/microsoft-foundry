@@ -29,6 +29,7 @@ _SEVERITY_FILTERS = frozenset(
 _BINARY_FILTERS = frozenset(
     {
         ("Jailbreak", "Prompt"),
+        ("Indirect Attack", "Prompt"),
         ("Protected Material Text", "Completion"),
     }
 )

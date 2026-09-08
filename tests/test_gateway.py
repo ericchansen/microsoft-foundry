@@ -624,3 +624,20 @@ def test_verifier_rejects_nonblocking_guardrail_filter(repo_root: Path):
             guardrail,
             expected_name="contoso-agents-guardrails",
         )
+
+
+@pytest.mark.parametrize("name,source", [
+    ("Jailbreak", "Prompt"),
+    ("Indirect Attack", "Prompt"),
+    ("Protected Material Text", "Completion"),
+])
+def test_verifier_requires_each_binary_guardrail(repo_root: Path, name: str, source: str):
+    config = gateway.load_config(repo_root / "config" / "gateway.yaml")
+    guardrail = _live_contract(config)["guardrail"]
+    guardrail["properties"]["contentFilters"] = [
+        item for item in guardrail["properties"]["contentFilters"]
+        if (item["name"], item["source"]) != (name, source)
+    ]
+
+    with pytest.raises(gateway.GatewayConfigError, match="filter inventory"):
+        gateway._verify_guardrail_policy(guardrail, expected_name="contoso-agents-guardrails")
