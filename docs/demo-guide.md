@@ -40,6 +40,20 @@ Do this before the audience arrives.
    The expected relative name is `rg-contoso-agents`. Do not substitute another
    resource group or broaden a role assignment.
 
+   From the checkout with the repository CLI installed, verify the live
+   ownership and governance contracts, not just resource existence:
+
+   ```powershell
+   Set-Item Env:PYTHONPATH "src;agents\travel\src"
+   foundry boundary --enable-module optional-control-plane
+   foundry gateway verify
+   ```
+
+   The module flag includes the SRE and Approvals resources listed below; it
+   does not start them. Stop if either command fails. In particular, a working
+   chat does not prove that the declared blocking mode and content filters
+   remain intact. See the [guardrail baseline](platform/model-governance.md#content-guardrail-baseline).
+
 3. Open [Microsoft Foundry](https://ai.azure.com/). In the project selector,
    choose **View all resources**, open `contoso-agents-foundry`, then select the
    `travel` project.

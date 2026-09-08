@@ -38,8 +38,10 @@ an explicit limitation rather than a hidden manual claim.
 The custom `contoso-agents-guardrails` RAI policy uses the stable
 `Microsoft.CognitiveServices/accounts/raiPolicies@2026-05-01` API and inherits
 `Microsoft.DefaultV2`. It blocks medium-or-higher hate, sexual, violence, and
-self-harm content in prompts and completions, plus jailbreak prompts and
-protected text completions.
+self-harm content in prompts and completions, plus jailbreak prompts, indirect
+prompt attacks, and protected text completions. Live verification requires
+`Blocking` mode and the complete filter inventory; a successful agent response
+alone does not establish that the policy still matches this baseline.
 
 !!! warning "A policy definition is not enforcement"
     Creating an RAI policy does **not** attach it to a model deployment. The
@@ -55,8 +57,8 @@ Azure. It is a Microsoft-operated service control, not a property this template
 can switch on. The repository does not request modified abuse monitoring and
 does not claim to configure it.
 
-Prompt Shields are represented by the `Jailbreak` prompt filter inherited from
-and made explicit against `Microsoft.DefaultV2`. The APIM custom-agent policy can
+Prompt Shields are represented by the `Jailbreak` and `Indirect Attack` prompt
+filters made explicit against `Microsoft.DefaultV2`. The APIM custom-agent policy can
 also call Azure AI Content Safety in a future deployment, but doing so requires
 a separately owned Content Safety backend. The architecture does not claim that
 backend exists until boundary and policy readback prove it.
