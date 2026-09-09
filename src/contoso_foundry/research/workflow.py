@@ -26,7 +26,7 @@ REQUIRED_CONTRACT_VERSIONS = {
     "orders": "1.0.0",
     "hr": "1.0.0",
     "support": "1.0.0",
-    "travel": "1.0.0",
+    "travel": "1.1.0",
 }
 
 

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import sys
+from contextlib import nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -14,6 +16,7 @@ from contoso_travel_agent.traffic import (  # noqa: E402
     TrafficConfigurationError,
     TrafficPlan,
     _flush_telemetry,
+    run_from_environment,
 )
 
 
@@ -32,6 +35,12 @@ def test_traffic_is_disabled_by_default(plan):
         )
         is not None
     )
+
+
+def test_scheduled_prompts_use_business_language_without_expiring_dates(plan):
+    for scenario in plan.scenarios:
+        assert not any(token in scenario.prompt for token in ("LOC-", "ROUTE-", "2026-", "travel_search_"))
+        assert "synthetic" not in scenario.prompt.casefold()
 
 
 def test_weekday_business_hours_reserve_half_the_estate_slots_for_travel(plan):
@@ -115,6 +124,62 @@ def test_traffic_flushes_completed_conversation_span():
     provider = Provider()
     _flush_telemetry(provider)
     assert provider.timeout == 30_000
+
+
+@pytest.mark.parametrize("tool_count", [0, 2])
+def test_scheduled_traffic_counts_actual_server_executed_calls(monkeypatch, tool_count):
+    import azure.ai.projects
+    import azure.ai.projects.telemetry
+    import azure.identity
+    import azure.monitor.opentelemetry
+    from opentelemetry import trace
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    requests = []
+    calls = []
+    for index in range(tool_count):
+        calls.extend([
+            SimpleNamespace(type="openapi_call", name="travel_get_policy",
+                            arguments="{}", call_id=f"call-{index}", status="completed"),
+            SimpleNamespace(type="openapi_call_output", call_id=f"call-{index}", status="completed"),
+        ])
+
+    def create(**kwargs):
+        requests.append(kwargs)
+        return SimpleNamespace(output=calls, output_text="A verified answer.")
+
+    client = SimpleNamespace(responses=SimpleNamespace(create=create))
+    project = SimpleNamespace(
+        telemetry=SimpleNamespace(get_application_insights_connection_string=lambda: "synthetic"),
+        get_openai_client=lambda: nullcontext(client),
+    )
+    monkeypatch.setattr(azure.ai.projects, "AIProjectClient", lambda **_: project)
+    monkeypatch.setattr(azure.identity, "DefaultAzureCredential", lambda: None)
+    monkeypatch.setattr(azure.monitor.opentelemetry, "configure_azure_monitor", lambda **_: None)
+    monkeypatch.setattr(
+        azure.ai.projects.telemetry, "AIProjectInstrumentor",
+        lambda: SimpleNamespace(instrument=lambda: None),
+    )
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr(trace, "get_tracer", provider.get_tracer)
+    monkeypatch.setattr(trace, "get_tracer_provider", lambda: provider)
+    monkeypatch.setenv("FOUNDRY_PROJECT_ENDPOINT", "https://travel.example.invalid")
+    monkeypatch.setenv("TRAVEL_AGENT_VERSION", "8")
+    monkeypatch.setenv("TRAFFIC_ENABLED", "true")
+    monkeypatch.setenv("TRAFFIC_FORCE_RUN", "true")
+    monkeypatch.setenv("CONTOSO_REPO_ROOT", str(REPO_ROOT))
+    result = run_from_environment(instant=datetime(2026, 8, 24, 15, 0, tzinfo=UTC))
+    assert result["tool_names"] == ["travel_get_policy"] * tool_count
+    assert result["status"] == "completed"
+    assert len(requests) == 1
+    assert requests[0]["extra_body"]["agent_reference"]["version"] == "8"
+    span, = exporter.get_finished_spans()
+    assert span.attributes["contoso.tool.count"] == tool_count
+    provider.shutdown()
 
 
 @pytest.mark.parametrize("provider", [object(), type("Provider", (), {"force_flush": lambda self, **_: False})()])

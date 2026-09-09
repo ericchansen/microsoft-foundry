@@ -257,6 +257,27 @@ class ScopedRepository:
         row = self._connection.execute(sql, [*scope_params, *filter_params]).fetchone()
         return int(row[0])
 
+    def travel_locations(self) -> list[dict[str, Any]]:
+        """Public endpoint labels for the already company-wide travel network.
+
+        This is not a general location read: only route-linked endpoint labels
+        are projected. Location inventory, region scope, and operational reads
+        keep their existing predicates. A bounded overflow must fail rather
+        than let a truncated directory falsely prove a unique match.
+        """
+        from_sql, scope_sql, scope_params = self._scoped_from("travel_routes")
+        columns = ("location_id", "name", "city", "country", "kind")
+        projection = ", ".join(f"l.{name}" for name in columns)
+        rows = self._connection.execute(
+            f"SELECT DISTINCT {projection} FROM {from_sql} "
+            "JOIN locations l ON l.location_id IN (t.origin_location_id, t.destination_location_id) "
+            f"WHERE {scope_sql} ORDER BY l.location_id LIMIT 201",
+            scope_params,
+        ).fetchall()
+        if len(rows) > 200:
+            raise ScopeViolationError("travel endpoint directory exceeds its verified resolution bound")
+        return [dict(zip(columns, row, strict=True)) for row in rows]
+
     def describe(self, table: str) -> dict[str, Any]:
         """Describe a table's agent-visible shape.
 

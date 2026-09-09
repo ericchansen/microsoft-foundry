@@ -116,7 +116,7 @@ class TestHappyPath:
                     left_name,
                 )
 
-    def test_shipped_boundary_allows_exactly_one_versioned_travel_tool_release(self, repo_root):
+    def test_shipped_boundary_names_active_and_optional_rollback_releases(self, repo_root):
         shipped = boundary.load_plan(repo_root / "config" / "boundary.yaml")
         travel_services = [
             entry
@@ -136,11 +136,16 @@ class TestHappyPath:
             if "travel-tool" in entry["scope"]
         ]
 
-        assert len(travel_services) == len(travel_connections) == len(travel_identities) == 1
+        assert len(travel_services) == len(travel_connections) == len(travel_identities) == 2
         for entry in (*travel_services, *travel_connections, *travel_identities):
-            assert entry["scope"].endswith("-v*")
-            assert entry["expected_live_count"] == 1
-            assert entry["deployment_max_live_count"] == 2
+            assert "*" not in entry["scope"]
+            if entry["name"].startswith("active-"):
+                assert entry["scope"].endswith("-v4")
+                assert entry.get("required_live", True) is True
+            else:
+                assert entry["name"].startswith("rollback-")
+                assert entry["scope"].endswith("-v3")
+                assert entry["required_live"] is False
 
     def test_shipped_boundary_declares_every_agent_collection(self, repo_root):
         shipped = boundary.load_plan(repo_root / "config" / "boundary.yaml")

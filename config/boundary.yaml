@@ -181,9 +181,11 @@ resources:
     scope: providers/Microsoft.EventGrid/systemTopics/contosoagents*
   - name: active-travel-tool-service
     kind: Microsoft.App/containerApps
-    scope: providers/Microsoft.App/containerApps/contoso-agents-travel-tool-v*
-    expected_live_count: 1
-    deployment_max_live_count: 2
+    scope: providers/Microsoft.App/containerApps/contoso-agents-travel-tool-v4
+  - name: rollback-travel-tool-service
+    kind: Microsoft.App/containerApps
+    scope: providers/Microsoft.App/containerApps/contoso-agents-travel-tool-v3
+    required_live: false
   - name: travel-appinsights-connection
     kind: Microsoft.CognitiveServices/accounts/projects/connections
     scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/projects/travel/connections/appinsights-travel
@@ -197,9 +199,11 @@ resources:
     scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/projects/travel/connections/ai-gateway-default
   - name: active-travel-tool-connection
     kind: Microsoft.CognitiveServices/accounts/projects/connections
-    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/projects/travel/connections/travel-openapi-v*
-    expected_live_count: 1
-    deployment_max_live_count: 2
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/projects/travel/connections/travel-openapi-v4
+  - name: rollback-travel-tool-connection
+    kind: Microsoft.CognitiveServices/accounts/projects/connections
+    scope: providers/Microsoft.CognitiveServices/accounts/contoso-agents-foundry/projects/travel/connections/travel-openapi-v3
+    required_live: false
 
 diagnostic_settings:
   - name: ai-gateway-logs
@@ -237,9 +241,12 @@ identities:
     reuse_existing: false
   - name: active-travel-tool-identity
     kind: Microsoft.ManagedIdentity/userAssignedIdentities
-    scope: providers/Microsoft.ManagedIdentity/userAssignedIdentities/contoso-agents-travel-tool-v*
-    expected_live_count: 1
-    deployment_max_live_count: 2
+    scope: providers/Microsoft.ManagedIdentity/userAssignedIdentities/contoso-agents-travel-tool-v4
+    reuse_existing: false
+  - name: rollback-travel-tool-identity
+    kind: Microsoft.ManagedIdentity/userAssignedIdentities
+    scope: providers/Microsoft.ManagedIdentity/userAssignedIdentities/contoso-agents-travel-tool-v3
+    required_live: false
     reuse_existing: false
   - name: approvals-identity
     module: optional-control-plane
@@ -385,6 +392,16 @@ role_assignments:
     role: Monitoring Metrics Publisher
     principal: active-travel-tool-identity
     scope: providers/microsoft.insights/components/contoso-agents-insights
+  - name: rollback-travel-tool-pulls-images
+    role: AcrPull
+    principal: rollback-travel-tool-identity
+    scope: providers/Microsoft.ContainerRegistry/registries/contosoagents*
+    required_live: false
+  - name: rollback-travel-tool-publishes-monitoring
+    role: Monitoring Metrics Publisher
+    principal: rollback-travel-tool-identity
+    scope: providers/microsoft.insights/components/contoso-agents-insights
+    required_live: false
   - name: sre-user-reads-owned-resources
     module: optional-control-plane
     role: Reader

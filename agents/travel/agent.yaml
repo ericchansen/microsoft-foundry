@@ -1,6 +1,6 @@
 schema_version: 2
 name: contoso-travel
-definition_version: 3.0.0
+definition_version: 4.0.0
 project: travel
 model:
   deployment: travel-gpt-5-4-mini
@@ -14,8 +14,9 @@ instructions: instructions.md
 tool_contract: ../../config/toolbox/travel.yaml
 tool_transport:
   type: openapi_project_connection
-  connection: travel-openapi-v3
+  connection: travel-openapi-v4
   operations:
+    - travel_resolve_locations
     - travel_search_routes
     - travel_search_fares
     - travel_get_policy
