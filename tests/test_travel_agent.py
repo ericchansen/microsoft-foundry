@@ -511,7 +511,8 @@ def test_service_api_key_comparison_rejects_non_ascii_without_error():
 
 
 def test_promotion_pins_only_the_accepted_agent_version():
-    endpoint = SimpleNamespace(version_selector=None)
+    before = {"version_selector": None, "authorization_schemes": ["unchanged"]}
+    endpoint = SimpleNamespace(as_dict=lambda: before)
     updated = SimpleNamespace(
         agent_endpoint=SimpleNamespace(
             version_selector=SimpleNamespace(
@@ -521,17 +522,31 @@ def test_promotion_pins_only_the_accepted_agent_version():
             )
         )
     )
+    patches = []
+
+    def update_details(**kwargs):
+        patches.append(kwargs)
+        return updated
+
     agents = SimpleNamespace(
         get=lambda **_: SimpleNamespace(agent_endpoint=endpoint),
-        update_details=lambda **kwargs: updated,
+        update_details=update_details,
     )
 
     pin_agent_version(
         SimpleNamespace(agents=agents),
         {"agent_name": "contoso-travel", "created_version": "7"},
+        expected_endpoint=before,
     )
 
-    assert endpoint.version_selector.version_selection_rules[0].agent_version == "7"
+    assert patches == [{
+        "agent_name": "contoso-travel",
+        "retry_total": 0,
+        "body": {"agent_endpoint": {"version_selector": {"version_selection_rules": [{
+            "type": "FixedRatio", "agent_version": "7", "traffic_percentage": 100,
+        }]}}},
+    }]
+    assert before["version_selector"] is None
 
 
 @pytest.mark.parametrize(
