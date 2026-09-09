@@ -45,6 +45,13 @@ def test_documented_install_includes_all_test_extras(repo_root):
     assert required in (repo_root / "docs" / "operations" / "verification.md").read_text(encoding="utf-8")
 
 
+def test_travel_model_capacity_uses_declared_interactive_headroom(repo_root):
+    agent = yaml.safe_load((repo_root / "agents" / "travel" / "agent.yaml").read_text(encoding="utf-8"))
+    template = (repo_root / "infra" / "modules" / "model-deployment.bicep").read_text(encoding="utf-8")
+    assert agent["model"]["capacity"] == 100
+    assert "param capacity int = loadYamlContent('../../agents/travel/agent.yaml').model.capacity" in template
+
+
 def test_uses_current_foundry_apis(infra):
     assert "Microsoft.CognitiveServices/accounts@2026-07-01" in infra["main"]
     assert "Microsoft.CognitiveServices/accounts/projects@2026-07-01" in infra["main"]

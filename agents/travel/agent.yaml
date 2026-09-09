@@ -8,7 +8,7 @@ model:
   version: '2026-03-17'
   format: OpenAI
   sku: GlobalStandard
-  capacity: 10
+  capacity: 100
   version_upgrade_option: NoAutoUpgrade
 instructions: instructions.md
 tool_contract: ../../config/toolbox/travel.yaml

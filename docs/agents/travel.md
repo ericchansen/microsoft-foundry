@@ -68,6 +68,24 @@ versions using that contract therefore are not browser-demo candidates. The
 checked-in callback runtime remains for SDK/CLI examples, while the browser-facing
 definition is regression-tested to permit only typed `OpenApiTool` transport.
 
+## Interactive rate-limit headroom
+
+The model deployment takes its capacity from `agents/travel/agent.yaml`. Its
+default allocation is 100,000 tokens per minute, so a presenter can make
+multi-tool requests without competing for the original 10,000-token allowance.
+This is an allocation of existing model quota, not an increase in the scheduled
+conversation rate or the configured monthly cost policy.
+
+Azure applies both token and request rate limits, and estimates token demand
+before a response finishes. A short answer can therefore still encounter a 429.
+If throttled, respect the response's retry delay rather than repeatedly
+resending. Check the deployment's live rate limits and available regional quota
+before changing its allocation; do not take quota from another deployment.
+After an update, allow up to 15 minutes for propagation and confirm the
+`x-ratelimit-limit-tokens` and `x-ratelimit-limit-requests` response headers.
+An updated ARM capacity alone does not prove inference is using the new limits.
+See [Azure OpenAI quota and rate limits](https://learn.microsoft.com/azure/foundry/openai/how-to/quota).
+
 ## Synthetic traffic
 
 The Container Apps Job is deployed with its maintenance switch **off**. When an
