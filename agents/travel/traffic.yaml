@@ -32,17 +32,17 @@ scenarios:
   - id: seattle-to-chicago
     persona: cost-conscious-consultant
     prompt: >-
-      Find the synthetic route from LOC-001 (Contoso Seattle Headquarters) to
-      LOC-002 (Contoso Chicago Distribution). Use travel_search_fares to read the
-      first published fare, then simulate it for 2026-09-15. Do not purchase or
-      reserve anything.
+      I need to travel from our Seattle headquarters to the Chicago distribution
+      center. Find the route, check the published economy fare, and explain
+      whether I need approval. Do not buy or reserve anything.
   - id: policy-check
     persona: accessibility-planner
     prompt: >-
-      Explain the synthetic travel policy that applies to me and state whether a
-      booking simulation makes any purchase.
+      What travel policy applies to me, and when would I need approval?
+      Can this assistant actually buy a ticket?
   - id: refundable-fare
     persona: last-minute-field-engineer
     prompt: >-
-      Find refundable synthetic fares on ROUTE-0001 and explain which option can be
-      simulated under my policy. Do not purchase or reserve anything.
+      My schedule may change. What refundable options are available from our
+      Seattle headquarters to the Chicago distribution center, and which fit
+      my policy? Do not buy or reserve anything.

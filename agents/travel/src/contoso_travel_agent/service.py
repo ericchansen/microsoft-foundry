@@ -22,6 +22,7 @@ from contoso_travel_agent.identity import SYNTHETIC_TRAVEL_PRINCIPAL
 
 SAFE_OPERATIONS = frozenset(
     {
+        "travel_resolve_locations",
         "travel_search_routes",
         "travel_search_fares",
         "travel_get_policy",
@@ -76,7 +77,13 @@ class TravelToolHandler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args: Any) -> None:
         return
 
-    def _json_response(self, status: HTTPStatus, payload: Any) -> None:
+    def _json_response(self, status: HTTPStatus, payload: Any, span: Any | None = None) -> None:
+        if span is not None:
+            from opentelemetry.trace import StatusCode
+
+            span.set_attribute("http.response.status_code", int(status))
+            if status >= HTTPStatus.BAD_REQUEST:
+                span.set_status(StatusCode.ERROR)
         body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
@@ -92,6 +99,46 @@ class TravelToolHandler(BaseHTTPRequestHandler):
         self._json_response(HTTPStatus.NOT_FOUND, {"error": "not found"})
 
     def do_POST(self) -> None:
+        prefix = "/operations/"
+        operation = self.path.removeprefix(prefix) if self.path.startswith(prefix) else ""
+        with self._operation_span(operation) as span:
+            self._handle_operation(operation, span)
+
+    def _operation_span(self, operation: str) -> Any:
+        if self.tracer is None:
+            return nullcontext(None)
+        from opentelemetry.context import Context
+        from opentelemetry.trace import SpanKind
+        from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+
+        # Only W3C trace context crosses this boundary. Never extract baggage,
+        # identity headers, or arbitrary fields into authorization or telemetry.
+        carrier = {}
+        for name in ("traceparent", "tracestate"):
+            values = self.headers.get_all(name, [])
+            if len(values) == 1:
+                carrier[name] = values[0]
+        parent = TraceContextTextMapPropagator().extract(carrier, context=Context())
+        known_operation = operation if operation in SAFE_OPERATIONS else "unknown"
+        return self.tracer.start_as_current_span(
+            "contoso.travel.openapi",
+            context=parent,
+            kind=SpanKind.SERVER,
+            attributes={
+                "contoso.synthetic": True,
+                "gen_ai.agent.name": "contoso-travel",
+                "gen_ai.operation.name": "execute_tool",
+                "gen_ai.tool.name": known_operation,
+                "http.request.method": "POST",
+                "http.route": f"/operations/{known_operation}" if operation in SAFE_OPERATIONS else "/operations/*",
+            },
+            # Exception messages may contain rejected inputs. Export only a
+            # safe error class and status, not request bodies or credentials.
+            record_exception=False,
+            set_status_on_exception=False,
+        )
+
+    def _handle_operation(self, operation: str, span: Any | None) -> None:
         supplied_key = self.headers.get("x-travel-tool-key", "")
         if not api_key_matches(supplied_key, self.api_key):
             route = "/operations/*" if self.path.startswith("/operations/") else "unknown"
@@ -105,43 +152,24 @@ class TravelToolHandler(BaseHTTPRequestHandler):
                     }
                 },
             )
-            if self.tracer is not None:
-                with self.tracer.start_as_current_span(
-                    "contoso.travel.openapi.authentication"
-                ) as span:
-                    span.set_attribute("contoso.synthetic", True)
-                    span.set_attribute("http.request.method", "POST")
-                    span.set_attribute("http.route", route)
-                    span.set_attribute("http.response.status_code", 401)
-            self._json_response(HTTPStatus.UNAUTHORIZED, {"error": "unauthorized"})
+            self._json_response(HTTPStatus.UNAUTHORIZED, {"error": "unauthorized"}, span)
             return
-        prefix = "/operations/"
-        operation = self.path.removeprefix(prefix) if self.path.startswith(prefix) else ""
         content_type = self.headers.get_content_type()
         try:
             content_length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
-            self._json_response(HTTPStatus.BAD_REQUEST, {"error": "invalid content length"})
+            self._json_response(HTTPStatus.BAD_REQUEST, {"error": "invalid content length"}, span)
             return
         if (
             content_type != "application/json"
             or content_length < 0
             or content_length > MAX_REQUEST_BYTES
         ):
-            self._json_response(HTTPStatus.BAD_REQUEST, {"error": "invalid JSON request"})
+            self._json_response(HTTPStatus.BAD_REQUEST, {"error": "invalid JSON request"}, span)
             return
         try:
             arguments = json.loads(self.rfile.read(content_length) or b"{}")
-            span_context = (
-                self.tracer.start_as_current_span("contoso.travel.openapi")
-                if self.tracer is not None
-                else nullcontext(None)
-            )
-            with span_context as span:
-                if span is not None:
-                    span.set_attribute("contoso.synthetic", True)
-                    span.set_attribute("gen_ai.tool.name", operation)
-                result = execute_operation(self.toolbox, operation, arguments)
+            result = execute_operation(self.toolbox, operation, arguments)
         except (
             json.JSONDecodeError,
             KeyError,
@@ -151,12 +179,24 @@ class TravelToolHandler(BaseHTTPRequestHandler):
             TypeError,
             ValueError,
         ) as error:
+            if span is not None:
+                span.set_attribute("error.type", type(error).__name__)
             self._json_response(
                 HTTPStatus.BAD_REQUEST,
                 {"error": type(error).__name__},
+                span,
             )
             return
-        self._json_response(HTTPStatus.OK, result)
+        except Exception as error:
+            if span is not None:
+                span.set_attribute("error.type", type(error).__name__)
+            self._json_response(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                {"error": "tool execution failed"},
+                span,
+            )
+            return
+        self._json_response(HTTPStatus.OK, result, span)
 
 
 def _configure_telemetry() -> Any | None:

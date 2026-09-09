@@ -1,5 +1,5 @@
 capability: travel
-version: 1.0.0
+version: 1.1.0
 title: Travel inventory, policy and booking simulation
 summary: >-
   The route network and fares are company wide; policy and bookings are scoped.
@@ -13,6 +13,48 @@ identity:
   policy_keys: [oid, tid]
 
 tools:
+  - name: travel_resolve_locations
+    title: Resolve a travel endpoint
+    summary: >-
+      Resolve a city, site name, or location ID against the company-wide route
+      endpoint directory. Returns status unique, ambiguous, or not_found and
+      matching endpoint labels. Use the ID only for a unique match; ask the user
+      to clarify ambiguous or missing locations. Never substitute another city.
+      This is public route metadata, not access to scoped operational locations.
+    side_effect: read
+    data_classification: public
+    required_roles: [travel.read]
+    parameters:
+      type: object
+      additionalProperties: false
+      properties:
+        query:
+          type: string
+          description: One city, site name, or canonical location ID, for example Chicago distribution center.
+          minLength: 1
+          maxLength: 200
+      required: [query]
+    returns:
+      type: object
+      required: [status, matches]
+      properties:
+        status:
+          type: string
+          enum: [unique, ambiguous, not_found]
+        matches:
+          type: array
+          items:
+            type: object
+            properties:
+              location_id: {type: string}
+              name: {type: string}
+              city: {type: string}
+              country: {type: string}
+              kind: {type: string}
+    examples:
+      - description: Resolve a city without inventing an identifier.
+        arguments: {query: Seattle}
+
   - name: travel_search_routes
     title: Search routes
     summary: >-

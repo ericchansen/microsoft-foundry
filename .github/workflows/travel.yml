@@ -29,6 +29,11 @@ on:
         required: true
         type: boolean
         default: false
+      provision_shared_infrastructure:
+        description: Bootstrap shared Travel infrastructure; leave false for releases into an existing estate
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -108,6 +113,7 @@ jobs:
       RESOURCE_GROUP: rg-contoso-agents
       OTEL_SERVICE_NAME: contoso-travel
       FOUNDRY_PROJECT_ENDPOINT: ${{ secrets.FOUNDRY_TRAVEL_PROJECT_ENDPOINT }}
+      PROVISION_SHARED_INFRASTRUCTURE: ${{ inputs.provision_shared_infrastructure }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
@@ -144,6 +150,9 @@ jobs:
             optional_args+=(--enable-module optional-control-plane)
           fi
           foundry boundary --deployment-readiness "${optional_args[@]}"
+          if (( ${#optional_args[@]} > 0 )); then
+            echo "FOUNDRY_ENABLED_MODULES=optional-control-plane" >> "$GITHUB_ENV"
+          fi
 
       - name: Refuse concurrent resource-group deployments
         run: |
@@ -239,6 +248,10 @@ jobs:
               echo "Two stale releases exist and neither is the desired release." >&2
               exit 1
             fi
+            if [[ "${{ inputs.rotate_tool_key }}" != "true" ]]; then
+              echo "Tool release ${release} already exists with retained rollback dependencies; request key rotation or a reviewed release change." >&2
+              exit 1
+            fi
             previous="$(printf '%s\n' "$connection_releases" | grep -v "^${release}$")"
             live_image="$(az containerapp show \
               --resource-group "$RESOURCE_GROUP" \
@@ -247,7 +260,7 @@ jobs:
               --output tsv)"
             repository="${live_image%@sha256:*}"
             digest="${live_image##*@sha256:}"
-            mode=resume
+            mode=rotate
           elif (( ${#connections[@]} == 1 )); then
             previous="${connections[0]#travel-openapi-}"
             if [[ "$previous" == "$release" ]]; then
@@ -308,6 +321,7 @@ jobs:
             --template-file infra/travel.bicep \
             --parameters \
               deployTrafficJob=false \
+              deploySharedInfrastructure="$PROVISION_SHARED_INFRASTRUCTURE" \
               imageRepository="${{ steps.release.outputs.image_repository }}" \
               imageDigest="${{ steps.release.outputs.image_digest }}" \
               agentVersion=pending \
@@ -331,6 +345,13 @@ jobs:
             --header 'content-type: application/json' \
             --data '{}' \
             "$url/operations/travel_get_policy")" = 401
+          curl --fail --silent --show-error \
+            --request POST \
+            --header 'content-type: application/json' \
+            --header "x-travel-tool-key: $tool_api_key" \
+            --data '{"query":"Chicago distribution center"}' \
+            "$url/operations/travel_resolve_locations" |
+            jq -e '.status == "unique" and .matches[0].location_id == "LOC-002"' >/dev/null
           curl --fail --silent --show-error \
             --request POST \
             --header 'content-type: application/json' \
@@ -386,10 +407,11 @@ jobs:
               imageDigest="$digest" \
               agentVersion="${{ steps.candidate.outputs.version }}" \
               deployToolService=false \
+              deploySharedInfrastructure=false \
               toolRelease="${{ steps.release.outputs.name }}" \
               location="$(python -c 'import yaml; print(yaml.safe_load(open("config/selected-region.yaml"))["region"])')"
 
-      - name: Decommission superseded tool release
+      - name: Retain preceding tool release for rollback
         if: steps.release.outputs.mode != 'rotate' && steps.release.outputs.previous != ''
         shell: bash
         run: |
@@ -397,44 +419,9 @@ jobs:
           current="${{ steps.release.outputs.name }}"
           [[ "$previous" =~ ^v[0-9]+$ ]]
           test "$previous" != "$current"
-          account_id="$(az cognitiveservices account show \
-            --resource-group "$RESOURCE_GROUP" \
-            --name contoso-agents-foundry \
-            --query id \
-            --output tsv)"
-          identity_name="contoso-agents-travel-tool-${previous}"
-          principal_id="$(az identity show \
-            --resource-group "$RESOURCE_GROUP" \
-            --name "$identity_name" \
-            --query principalId \
-            --output tsv)"
-          registry_id="$(az acr show \
-            --name "${{ steps.acr.outputs.name }}" \
-            --query id \
-            --output tsv)"
-          insights_id="$(az monitor app-insights component show \
-            --resource-group "$RESOURCE_GROUP" \
-            --app contoso-agents-insights \
-            --query id \
-            --output tsv)"
-          az rest \
-            --method delete \
-            --url "https://management.azure.com${account_id}/projects/travel/connections/travel-openapi-${previous}?api-version=2026-05-01"
-          az containerapp delete \
-            --resource-group "$RESOURCE_GROUP" \
-            --name "$identity_name" \
-            --yes
-          az role assignment delete \
-            --assignee-object-id "$principal_id" \
-            --role AcrPull \
-            --scope "$registry_id"
-          az role assignment delete \
-            --assignee-object-id "$principal_id" \
-            --role "Monitoring Metrics Publisher" \
-            --scope "$insights_id"
-          az identity delete \
-            --resource-group "$RESOURCE_GROUP" \
-            --name "$identity_name"
+          echo "Retaining ${previous} backend, connection, identity and scoped roles."
+          echo "An immutable agent version cannot roll back without its tool dependencies."
+          echo "Remove an older release only through a separate reviewed boundary change."
 
       - name: Verify converged live boundary
         run: |

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import sqlite3
 import sys
+from email.message import Message
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -31,6 +33,7 @@ from contoso_travel_agent.runtime import (  # noqa: E402
 )
 from contoso_travel_agent.service import (  # noqa: E402
     SAFE_OPERATIONS,
+    TravelToolHandler,
     api_key_matches,
     execute_operation,
 )
@@ -54,7 +57,7 @@ def test_definition_is_exact_and_digest_is_stable():
     assert first.model_version == "2026-03-17"
     assert first.digest == second.digest
     assert first.digest.startswith("sha256:")
-    assert first.tool_connection_name == "travel-openapi-v3"
+    assert first.tool_connection_name == "travel-openapi-v4"
     assert {tool["name"] for tool in first.tools} == SAFE_OPERATIONS
     assert "travel_list_my_bookings" not in SAFE_OPERATIONS
 
@@ -70,6 +73,7 @@ def test_browser_definition_uses_only_typed_server_executed_openapi_tool():
     assert all(tool["type"] != "function" for tool in definition["tools"])
     openapi = definition["tools"][0]["openapi"]
     assert openapi["auth"]["type"] == "project_connection"
+    assert openapi["spec"]["info"]["version"] == spec.definition_version
     assert set(
         operation["post"]["operationId"]
         for operation in openapi["spec"]["paths"].values()
@@ -101,7 +105,7 @@ def test_latest_model_version_fails_closed(tmp_path):
 
 def test_definition_version_requires_an_immutable_backend_connection(tmp_path):
     document = (AGENT_ROOT / "agent.yaml").read_text(encoding="utf-8").replace(
-        "travel-openapi-v3",
+        "travel-openapi-v4",
         "travel-openapi",
     )
     path = tmp_path / "agent.yaml"
@@ -302,6 +306,187 @@ def test_server_executed_runtime_rejects_function_callback():
     )
     with pytest.raises(AgentRuntimeError, match="client function output"):
         runtime.run_turn("Find route", agent_version="8")
+
+
+def test_server_runtime_continuation_is_explicit_and_preserves_response_metadata():
+    requests = []
+    response = SimpleNamespace(id="response-first", output=[], output_text="Which site?", usage={"total_tokens": 12})
+
+    def create(**kwargs):
+        requests.append(kwargs)
+        return response
+
+    runtime = ServerExecutedTravelRuntime(
+        SimpleNamespace(responses=SimpleNamespace(create=create)),
+        load_agent_spec(AGENT_ROOT / "agent.yaml"),
+    )
+    runtime.run_turn("Find a route", agent_version="8")
+    assert "previous_response_id" not in requests[0]
+    assert runtime.response is response
+    runtime.run_turn("Chicago distribution center", agent_version="8", previous_response_id=runtime.response.id)
+    assert requests[1]["previous_response_id"] == "response-first"
+    assert requests[1]["extra_body"]["agent_reference"]["version"] == "8"
+    assert runtime.response.usage == {"total_tokens": 12}
+    runtime.run_turn("A new conversation", agent_version="8")
+    assert "previous_response_id" not in requests[2]
+    with pytest.raises(AgentRuntimeError, match="previous_response_id"):
+        runtime.run_turn("Follow up", agent_version="8", previous_response_id=" ")
+    assert len(requests) == 3
+    assert runtime.executed_calls == []
+
+
+def test_server_runtime_failed_turn_cannot_reuse_prior_tool_evidence():
+    responses = [
+        SimpleNamespace(
+            output=[
+                SimpleNamespace(type="openapi_call", name="travel_get_policy", arguments="{}",
+                                call_id="first", status="completed"),
+                SimpleNamespace(type="openapi_call_output", call_id="first", status="completed"),
+            ],
+            output_text="Policy",
+        ),
+        SimpleNamespace(output=[SimpleNamespace(type="function_call")], usage={"total_tokens": 2}),
+    ]
+    runtime = ServerExecutedTravelRuntime(
+        SimpleNamespace(responses=SimpleNamespace(create=lambda **_: responses.pop(0))),
+        load_agent_spec(AGENT_ROOT / "agent.yaml"),
+    )
+    runtime.run_turn("Policy?", agent_version="8")
+    assert len(runtime.executed_calls) == 1
+    with pytest.raises(AgentRuntimeError, match="client function output"):
+        runtime.run_turn("Follow up", agent_version="8", previous_response_id="first")
+    assert runtime.executed_calls == []
+    assert runtime.response.usage == {"total_tokens": 2}
+
+
+def _tool_http_request(*, tracer=None, headers=None, body=None, authorized=True, error=None):
+    class RecordingToolbox:
+        def __init__(self):
+            self.calls = []
+
+        def call(self, operation, arguments):
+            self.calls.append((operation, arguments))
+            if error is not None:
+                raise error
+            return {"status": "unique", "matches": []}
+
+    handler = TravelToolHandler.__new__(TravelToolHandler)
+    handler.path = "/operations/travel_resolve_locations"
+    handler.api_key = "placeholder-test-credential"
+    handler.toolbox = RecordingToolbox()
+    handler.tracer = tracer
+    payload = json.dumps(body or {"query": "Seattle"}).encode()
+    handler.headers = Message()
+    for key, value in {
+        "Content-Type": "application/json",
+        "Content-Length": str(len(payload)),
+        "x-travel-tool-key": handler.api_key if authorized else "wrong-credential",
+        **(headers or {}),
+    }.items():
+        handler.headers[key] = value
+    handler.rfile = io.BytesIO(payload)
+    handler.wfile = io.BytesIO()
+    statuses = []
+    handler.send_response = statuses.append
+    handler.send_header = lambda *_: None
+    handler.end_headers = lambda: None
+    handler.do_POST()
+    return handler, statuses
+
+
+def test_tool_http_tracing_is_optional():
+    handler, statuses = _tool_http_request()
+    assert statuses == [200]
+    assert handler.toolbox.calls == [("travel_resolve_locations", {"query": "Seattle"})]
+
+
+@pytest.mark.parametrize("traceparent", [
+    "00-1234567890abcdef1234567890abcdef-1234567890abcdef-01",
+    "not-a-trace",
+    "00-00000000000000000000000000000000-1234567890abcdef-01",
+])
+def test_tool_http_extracts_only_valid_w3c_trace_context(traceparent):
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+    from opentelemetry.trace import SpanKind
+
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    handler, statuses = _tool_http_request(
+        tracer=provider.get_tracer("test"),
+        headers={
+            "traceparent": traceparent,
+            "baggage": "principal=untrusted,region=untrusted",
+            "x-principal": "untrusted",
+        },
+    )
+    span, = exporter.get_finished_spans()
+    assert statuses == [200]
+    assert handler.toolbox.calls == [("travel_resolve_locations", {"query": "Seattle"})]
+    if traceparent.startswith("00-1234"):
+        assert span.context.trace_id == int("1234567890abcdef1234567890abcdef", 16)
+        assert span.parent.span_id == int("1234567890abcdef", 16)
+        assert span.parent.is_remote
+    else:
+        assert span.parent is None
+    assert span.kind == SpanKind.SERVER
+    assert span.attributes["gen_ai.tool.name"] == "travel_resolve_locations"
+    assert span.attributes["gen_ai.operation.name"] == "execute_tool"
+    assert span.attributes["http.response.status_code"] == 200
+    assert "untrusted" not in str(span.attributes)
+    assert "credential" not in str(span.attributes)
+    assert not span.events
+    provider.shutdown()
+
+
+def test_tool_http_trace_context_never_bypasses_authentication():
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    handler, statuses = _tool_http_request(
+        tracer=provider.get_tracer("test"),
+        headers={"traceparent": "00-1234567890abcdef1234567890abcdef-1234567890abcdef-01"},
+        authorized=False,
+    )
+    assert statuses == [401]
+    assert handler.toolbox.calls == []
+    span, = exporter.get_finished_spans()
+    assert span.attributes["http.response.status_code"] == 401
+    assert span.status.is_ok is False
+    assert "credential" not in str(span.attributes)
+    provider.shutdown()
+
+
+@pytest.mark.parametrize("error,status", [
+    (PermissionError("private rejected arguments"), 400),
+    (RuntimeError("private dependency details"), 500),
+])
+def test_tool_http_failure_records_only_safe_error_metadata(error, status):
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    handler, statuses = _tool_http_request(
+        tracer=provider.get_tracer("test"),
+        error=error,
+    )
+    assert statuses == [status]
+    span, = exporter.get_finished_spans()
+    assert span.attributes["error.type"] == type(error).__name__
+    assert span.attributes["http.response.status_code"] == status
+    assert not span.events
+    assert "private" not in str(span.attributes)
+    assert b"private" not in handler.wfile.getvalue()
+    provider.shutdown()
 
 
 def test_service_exposes_only_safe_operations():

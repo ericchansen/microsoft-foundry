@@ -5,8 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import sqlite3
-import tempfile
 from calendar import monthrange
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -16,9 +14,8 @@ from zoneinfo import ZoneInfo
 
 import yaml
 
-from contoso_foundry.data import build as build_mod
 from contoso_travel_agent.definition import load_agent_spec
-from contoso_travel_agent.runtime import TravelAgentRuntime
+from contoso_travel_agent.runtime import ServerExecutedTravelRuntime
 
 
 class TrafficConfigurationError(RuntimeError):
@@ -212,17 +209,6 @@ class TrafficPlan:
         return f"{local:%Y/%m/%d/%H}/{quarter}.json"
 
 
-def _build_database(repo_root: Path) -> sqlite3.Connection:
-    out_dir = Path(tempfile.mkdtemp(prefix="contoso-travel-"))
-    result = build_mod.build(
-        config_path=repo_root / "config" / "data-spine.yaml",
-        seed_dir=repo_root / "data" / "seed",
-        out_dir=out_dir,
-        fixtures_dir=repo_root / "data" / "fixtures",
-    )
-    return sqlite3.connect(result.root / "contoso.db")
-
-
 def _flush_telemetry(provider: Any) -> None:
     force_flush = getattr(provider, "force_flush", None)
     if force_flush is None or not force_flush(timeout_millis=30_000):
@@ -264,31 +250,24 @@ def run_from_environment(*, instant: datetime | None = None) -> dict[str, Any]:
     with (
         tracer.start_as_current_span("contoso.travel.synthetic_conversation") as span,
         project.get_openai_client() as openai_client,
-        _build_database(repo_root) as connection,
     ):
         span.set_attribute("contoso.synthetic", True)
         span.set_attribute("contoso.traffic.slot", slot_key)
         span.set_attribute("contoso.scenario.id", scenario.scenario_id)
         span.set_attribute("gen_ai.agent.name", spec.name)
         span.set_attribute("gen_ai.agent.version", os.environ["TRAVEL_AGENT_VERSION"])
-        runtime = TravelAgentRuntime(
-            openai_client,
-            spec,
-            connection,
-            contracts_dir=repo_root / "config" / "toolbox",
-            tracer=tracer,
-        )
+        runtime = ServerExecutedTravelRuntime(openai_client, spec)
         answer = runtime.run_turn(
             scenario.prompt,
             agent_version=os.environ["TRAVEL_AGENT_VERSION"],
         )
-        span.set_attribute("contoso.tool.count", len(runtime.audit))
+        span.set_attribute("contoso.tool.count", len(runtime.executed_calls))
     _flush_telemetry(trace.get_tracer_provider())
     return {
         "status": "completed",
         "scenario_id": scenario.scenario_id,
         "slot": slot_key,
-        "tool_names": [call.tool for call in runtime.audit],
+        "tool_names": [call.name for call in runtime.executed_calls],
         "answer_length": len(answer),
         "synthetic": True,
     }

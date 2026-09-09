@@ -30,6 +30,9 @@ param trafficCronExpression string = '0,30 * * * *'
 @description('Deploy one immutable Travel tool backend and project connection.')
 param deployToolService bool = true
 
+@description('Provision shared traffic identity, role assignments and environment. Disable for a release into a verified existing estate.')
+param deploySharedInfrastructure bool = true
+
 @description('Authentication key shared only by the Travel tool service and its Foundry project connection.')
 @secure()
 @minLength(32)
@@ -37,7 +40,7 @@ param toolApiKey string = newGuid()
 
 @description('Immutable backend release matching the prompt-agent definition major version.')
 @minLength(2)
-param toolRelease string = 'v2'
+param toolRelease string = 'v${split(loadYamlContent('../agents/travel/agent.yaml').definition_version, '.')[0]}'
 
 param tags object = {
   project: 'contoso-agents'
@@ -69,7 +72,7 @@ resource applicationInsights 'Microsoft.Insights/components@2020-02-02' existing
   name: '${resourcePrefix}-insights'
 }
 
-resource trafficIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30' = {
+resource trafficIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30' = if (deploySharedInfrastructure) {
   name: '${resourcePrefix}-travel-traffic'
   location: location
   tags: tags
@@ -81,21 +84,21 @@ resource toolIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-
   tags: tags
 }
 
-resource foundryUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+resource foundryUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deploySharedInfrastructure) {
   name: guid(foundryAccount.id, trafficIdentity.id, foundryUserRoleId)
   scope: foundryAccount
   properties: {
-    principalId: trafficIdentity.properties.principalId
+    principalId: trafficIdentity!.properties.principalId
     principalType: 'ServicePrincipal'
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', foundryUserRoleId)
   }
 }
 
-resource registryPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+resource registryPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deploySharedInfrastructure) {
   name: guid(registry.id, trafficIdentity.id, acrPullRoleId)
   scope: registry
   properties: {
-    principalId: trafficIdentity.properties.principalId
+    principalId: trafficIdentity!.properties.principalId
     principalType: 'ServicePrincipal'
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', acrPullRoleId)
   }
@@ -124,7 +127,7 @@ resource toolMonitoringPublisher 'Microsoft.Authorization/roleAssignments@2022-0
   }
 }
 
-resource environment 'Microsoft.App/managedEnvironments@2025-07-01' = {
+resource environment 'Microsoft.App/managedEnvironments@2025-07-01' = if (deploySharedInfrastructure) {
   name: '${resourcePrefix}-traffic-env'
   location: location
   tags: tags
@@ -148,7 +151,7 @@ resource toolService 'Microsoft.App/containerApps@2025-07-01' = if (deployToolSe
     }
   }
   properties: {
-    environmentId: environment.id
+    environmentId: environment!.id
     configuration: {
       activeRevisionsMode: 'Single'
       ingress: {
@@ -296,11 +299,11 @@ resource trafficJob 'Microsoft.App/jobs@2025-07-01' = if (deployTrafficJob) {
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: {
-      '${trafficIdentity.id}': {}
+      '${trafficIdentity!.id}': {}
     }
   }
   properties: {
-    environmentId: environment.id
+    environmentId: environment!.id
     configuration: {
       triggerType: 'Schedule'
       replicaTimeout: 600
@@ -313,7 +316,7 @@ resource trafficJob 'Microsoft.App/jobs@2025-07-01' = if (deployTrafficJob) {
       registries: [
         {
           server: registry.properties.loginServer
-          identity: trafficIdentity.id
+          identity: trafficIdentity!.id
         }
       ]
     }
@@ -329,7 +332,7 @@ resource trafficJob 'Microsoft.App/jobs@2025-07-01' = if (deployTrafficJob) {
             }
             {
               name: 'AZURE_CLIENT_ID'
-              value: trafficIdentity.properties.clientId
+              value: trafficIdentity!.properties.clientId
             }
             {
               name: 'FOUNDRY_PROJECT_ENDPOINT'
@@ -375,7 +378,7 @@ resource trafficJob 'Microsoft.App/jobs@2025-07-01' = if (deployTrafficJob) {
 }
 
 output jobName string = deployTrafficJob ? trafficJob.name : ''
-output environmentName string = environment.name
+output environmentName string = environment!.name
 output toolConnectionName string = deployToolService ? toolConnection.name : ''
 output toolServiceName string = deployToolService ? toolService.name : ''
 output toolServiceUrl string = deployToolService ? 'https://${toolService.properties.configuration.ingress.fqdn}' : ''

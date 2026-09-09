@@ -76,6 +76,7 @@ def _openapi_spec(
     operations: tuple[dict[str, Any], ...],
     *,
     server_url: str,
+    version: str,
 ) -> dict[str, Any]:
     paths = {}
     for operation in operations:
@@ -110,9 +111,9 @@ def _openapi_spec(
         "openapi": "3.1.0",
         "info": {
             "title": "Contoso synthetic Travel Toolbox",
-            "version": "2.0.0",
+            "version": version,
             "description": (
-                "Four deterministic synthetic travel operations. Caller identity and "
+                "Deterministic synthetic travel operations and endpoint resolution. Caller identity and "
                 "regional scope are fixed by the service."
             ),
         },
@@ -153,8 +154,8 @@ def build_agent_definition(
     tool = OpenApiTool(
         openapi=OpenApiFunctionDefinition(
             name="contoso_travel_toolbox",
-            description="Four authenticated synthetic Travel operations with immutable server scope.",
-            spec=_openapi_spec(spec.tools, server_url=server_url),
+            description="Authenticated Travel operations and location resolution with immutable server scope.",
+            spec=_openapi_spec(spec.tools, server_url=server_url, version=spec.definition_version),
             auth=OpenApiProjectConnectionAuthDetails(
                 security_scheme=OpenApiProjectConnectionSecurityScheme(
                     project_connection_id=project_connection_id,

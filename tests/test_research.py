@@ -329,7 +329,9 @@ def test_hosted_configuration_routes_exact_versions(repo_root: Path) -> None:
     assert 'CMD ["python", "-m", "contoso_foundry.research.hosted"]' in dockerfile
     assert "Verify hosted-agent readiness endpoint" in ci
     assert "http://127.0.0.1:8089/readiness" in ci
-    assert {name: "1.0.0" for name in REQUIRED_CONTRACT_VERSIONS} == REQUIRED_CONTRACT_VERSIONS
+    assert (
+        {name: "1.0.0" for name in REQUIRED_CONTRACT_VERSIONS} | {"travel": "1.1.0"}
+    ) == REQUIRED_CONTRACT_VERSIONS
 
 
 def test_deployment_target_is_derived_from_relative_boundary(repo_root: Path) -> None:
