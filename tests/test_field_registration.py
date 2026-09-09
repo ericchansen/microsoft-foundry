@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -99,7 +99,11 @@ def test_registration_refuses_unproven_identity(summary: dict, message: str) -> 
         verify(summary)
 
 
-def test_registration_query_is_scoped_to_smoke_start_trace_and_revision(monkeypatch) -> None:
+@pytest.mark.parametrize("started_at", [
+    datetime(2026, 8, 25, 2, 30, tzinfo=UTC),
+    datetime(2026, 8, 24, 21, 30, tzinfo=timezone(timedelta(hours=-5))),
+])
+def test_registration_query_is_scoped_to_smoke_start_trace_and_revision(monkeypatch, started_at) -> None:
     captured: list[str] = []
     expected = payload(5, 5, ["contoso-field-v1"])
 
@@ -108,12 +112,13 @@ def test_registration_query_is_scoped_to_smoke_start_trace_and_revision(monkeypa
         return expected
 
     monkeypatch.setattr(register.azure_cli, "run", fake_run)
+    before = datetime.now(UTC)
     result = register.query_live_telemetry(
         resource_group="rg-contoso-agents",
         application_insights_name="contoso-agents-insights",
         agent_name="contoso-field",
         smoke_correlation_id="smoke-1",
-        smoke_started_at=datetime(2026, 8, 25, 2, 30, tzinfo=UTC),
+        smoke_started_at=started_at,
         container_app_revision="contoso-field--rev-1",
     )
 
@@ -121,6 +126,9 @@ def test_registration_query_is_scoped_to_smoke_start_trace_and_revision(monkeypa
     assert result == expected
     assert "ago(" not in query
     assert "timestamp >= datetime(2026-08-25T02:30:00Z)" in query
+    assert captured[captured.index("--start-time") + 1] == "2026-08-25T02:30:00Z"
+    end_time = datetime.fromisoformat(captured[captured.index("--end-time") + 1])
+    assert before <= end_time <= datetime.now(UTC)
     assert 'smoke_correlation_id == "smoke-1"' in query
     assert 'smoke_revision == "contoso-field--rev-1"' in query
     assert "set_has_element(smoke_operations, operation_Id)" in query

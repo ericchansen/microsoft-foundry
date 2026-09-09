@@ -41,11 +41,15 @@ def is_available() -> bool:
     return executable() is not None
 
 
-def run(args: list[str], *, allow_write: bool = False, timeout: int = 300) -> Any:
+def run(
+    args: list[str], *, allow_write: bool = False, timeout: int = 300, parse_json: bool = True
+) -> Any:
     """Run ``az <args> -o json`` and return the parsed result.
 
     Refuses mutating verbs unless ``allow_write`` is explicitly set, so an
-    accidental ``create`` cannot slip through a discovery code path.
+    accidental ``create`` cannot slip through a discovery code path. Console
+    commands such as Container Apps exec can explicitly request raw output;
+    they still pass through the same authorization and process-exit checks.
     """
     rest_method = ""
     if args and args[0] == "rest":
@@ -81,7 +85,7 @@ def run(args: list[str], *, allow_write: bool = False, timeout: int = 300) -> An
         raise AzureCliError(f"az {' '.join(args)} failed: {stderr}")
     if not proc.stdout.strip():
         return None
-    return json.loads(proc.stdout)
+    return json.loads(proc.stdout) if parse_json else proc.stdout
 
 
 def try_run(args: list[str], *, default: Any = None, timeout: int = 300) -> Any:
