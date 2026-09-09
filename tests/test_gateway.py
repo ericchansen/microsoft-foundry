@@ -641,3 +641,16 @@ def test_verifier_requires_each_binary_guardrail(repo_root: Path, name: str, sou
 
     with pytest.raises(gateway.GatewayConfigError, match="filter inventory"):
         gateway._verify_guardrail_policy(guardrail, expected_name="contoso-agents-guardrails")
+
+
+def test_guardrail_reports_mode_and_missing_filter_together(repo_root: Path):
+    guardrail = _live_contract(gateway.load_config(repo_root / "config" / "gateway.yaml"))["guardrail"]
+    guardrail["properties"]["mode"] = "Default"
+    guardrail["properties"]["contentFilters"] = [
+        item for item in guardrail["properties"]["contentFilters"]
+        if item["name"] != "Protected Material Text"
+    ]
+    with pytest.raises(gateway.GatewayConfigError) as error:
+        gateway._verify_guardrail_policy(guardrail, expected_name="contoso-agents-guardrails")
+    assert "mode must be Blocking" in str(error.value)
+    assert "missing required filters: Protected Material Text/Completion" in str(error.value)
