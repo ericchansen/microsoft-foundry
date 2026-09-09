@@ -81,6 +81,7 @@ provider's location list.
 | --- | --- |
 | Built-in model deployment policies | <https://learn.microsoft.com/azure/foundry/how-to/model-deployment-policy> |
 | RAI policy Bicep resource | <https://learn.microsoft.com/azure/templates/microsoft.cognitiveservices/2026-05-01/accounts/raipolicies> |
+| Model quota allocation and rate limits | <https://learn.microsoft.com/azure/foundry/openai/how-to/quota> |
 | Content filtering | <https://learn.microsoft.com/azure/foundry/openai/concepts/content-filter> |
 | Abuse monitoring | <https://learn.microsoft.com/azure/foundry/openai/concepts/abuse-monitoring> |
 

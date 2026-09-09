@@ -16,8 +16,9 @@ param skuName string = 'GlobalStandard'
 @description('Existing account-level responsible AI policy enforced by this deployment.')
 param raiPolicyName string = 'contoso-agents-guardrails'
 
+@description('TPM allocation in thousands. Allow headroom for interactive multi-tool turns without raising traffic budgets.')
 @minValue(1)
-param capacity int = 10
+param capacity int = loadYamlContent('../../agents/travel/agent.yaml').model.capacity
 
 resource account 'Microsoft.CognitiveServices/accounts@2026-07-01' existing = {
   name: accountName
