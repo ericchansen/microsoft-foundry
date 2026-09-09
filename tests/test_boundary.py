@@ -730,7 +730,11 @@ class TestExistingGroupOwnership:
                     "has_more": False,
                 }
 
-        monkeypatch.setattr(boundary.requests, "get", lambda *_args, **_kwargs: Response())
+        def get(*_args, **kwargs):
+            assert kwargs["timeout"] == boundary.FOUNDRY_INVENTORY_TIMEOUT_SECONDS == 90
+            return Response()
+
+        monkeypatch.setattr(boundary.requests, "get", get)
         live_resources = {}
 
         boundary._augment_declared_inventory(
