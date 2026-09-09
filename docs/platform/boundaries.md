@@ -36,8 +36,8 @@ promise that deleting one resource group removes the platform.
 | `plan:role-assignment-scopes` | No role assignment is scoped at subscription or management-group level. |
 | `plan:teardown-completeness` | Every declared resource is covered by a teardown target. |
 | `live:target-ownership-tags` | An existing resource group carries every project ownership tag declared by the plan. |
-| `live:declared-resource-inventory` | The live inventory is one-to-one: every declaration resolves to exactly one resource, and every live resource resolves to exactly one declaration. Zero matches, wildcard duplicates and overlapping declarations fail. |
-| `live:declared-role-assignments` | Live role assignments match the declared principal, role and resource-relative scope exactly; missing and unexpected assignments fail. |
+| `live:declared-resource-inventory` | Required declarations match their declared counts, and each live resource resolves to exactly one declaration. Undeclared resources, unexpected counts, and overlapping declarations fail. Explicitly optional entries may be absent. |
+| `live:declared-role-assignments` | Live assignments match declared principal, role and resource-relative scope; missing required assignments and unexpected assignments fail. |
 | `live:protected-resource-groups` | Every other resource group in the subscription is enumerated and recorded as read-only. |
 
 ## Relative scopes are the load-bearing idea
@@ -89,6 +89,11 @@ external teardown inventory in `config/boundary.yaml` so that "delete the
 resource group" is never mistaken for complete cleanup.
 
 ## Current state
+
+Travel names its current backend bundle and the optional preceding rollback
+bundle separately. Keeping the preceding bundle does not permit an arbitrary
+third release. Promotion and rollback additionally verify that both required
+images, connections, identities, and scoped permissions still exist.
 
 The live result is deliberately generated rather than asserted in this page.
 `foundry boundary` inventories the current resource group and role assignments on

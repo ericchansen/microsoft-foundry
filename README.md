@@ -1,23 +1,26 @@
 # microsoft-foundry
 
-A worked example of designing a governed, multi-agent platform on
-[Microsoft Foundry](https://learn.microsoft.com/azure/foundry/) — for a
-fictitious company called Contoso.
+A twenty-minute enterprise agent operations demo on
+[Microsoft Foundry](https://learn.microsoft.com/azure/foundry/) and
+[Azure Monitor](https://learn.microsoft.com/azure/azure-monitor/app/agents-view):
+observe the estate, diagnose a failed task, exercise a real control, and compare
+an improvement. Contoso is fictional; model executions and operational evidence
+are real.
 
 **Public documentation site:** <https://ericchansen.github.io/microsoft-foundry/>
 
-The interesting part of this repository is not the architecture. It is that the
-architecture's key decisions — *which region*, *what it costs*, *what it is
-allowed to touch* — are **outputs of scripts that query live Azure APIs**, not
-assertions in a document. Anyone can re-run them.
+**Start with the [presenter guide](https://ericchansen.github.io/microsoft-foundry/demo-guide/).**
+The core story uses a native Travel agent and an external Pydantic AI Field
+agent. Infrastructure, extra frameworks, and optional platforms support that
+story; they are not the presentation.
 
 ## Repository scope
 
-The repository contains the complete tenant-neutral reference implementation:
-governance and verification, synthetic data and Toolbox contracts, specialist
-agent runtimes, optional platform coverage, and the Contoso Concierge ALM
-contract. Live tenant assets and deployment evidence remain outside source
-control and must be verified through the protected operations documented here.
+The repository contains tenant-neutral agent implementations, fictional data,
+deployment safeguards, and bounded live rehearsal commands. The Copilot Studio
+Concierge is an ALM scaffold, not the demo's working front door. Live assets and
+identifier-bearing evidence remain outside source control. A declaration or an
+old successful run is not a current readiness certificate.
 
 ## What is here
 

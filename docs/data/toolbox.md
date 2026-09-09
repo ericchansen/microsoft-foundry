@@ -3,19 +3,24 @@
 > **Takeaway:** the model chooses which business operation to perform, but it
 > never chooses who the caller is or which rows that caller may see.
 
-The repository defines 27 framework-neutral tool contracts across seven
-capabilities: catalog, customer, HR, operations, orders, support, and travel.
+The repository defines framework-neutral tool contracts across catalog,
+customer, HR, operations, orders, support, and travel.
 Each contract is versioned YAML with a JSON Schema parameter block, so the same
 source can later be exposed through [Microsoft Foundry
 Toolbox](https://learn.microsoft.com/azure/foundry/agents/concepts/toolbox-overview),
 MCP, or an agent SDK without redefining authorization rules.
 
+Here, Toolbox means shared Python code and contracts over generated SQLite,
+not a deployed Microsoft Foundry Toolbox service or one central HTTP database.
+Travel exposes its allow-listed operations over OpenAPI; the other specialist
+runtimes bind the library in-process.
+
 ```mermaid
 flowchart LR
-    token["Validated oid + tid"]
+    token["Trusted server principal"]
     resolver["Server-side identity resolver"]
     repo["Immutable scoped repository"]
-    tools["27 versioned tool contracts"]
+    tools["Versioned tool contracts"]
     data["Canonical Contoso data"]
 
     token --> resolver --> repo
@@ -24,7 +29,8 @@ flowchart LR
 
 ## Security invariants
 
-- Scope comes only from validated immutable `oid` and `tid` claims.
+- Scope comes from the server-selected immutable principal. Demo runtimes bind
+  fixed fixtures; they do not demonstrate delegated end-user authorization.
 - Tool schemas expose business filters, never identity, tenant, role, scope, or
   impersonation parameters.
 - Unknown identities fail before a tool can execute.
@@ -33,6 +39,8 @@ flowchart LR
 - HR aggregates suppress cohorts below the configured minimum.
 - Global catalog data stays global, while stock, orders, customers, employees,
   support cases, bookings, and work orders inherit a declared regional scope.
+- Travel name resolution projects only route-linked endpoint labels; it does
+  not make regional operational location records global.
 
 These are application-layer controls for the SQLite demo. The site does not
 claim database-native row-level security. A hosted implementation can preserve
