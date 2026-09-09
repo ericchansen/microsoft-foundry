@@ -1,5 +1,11 @@
 # Architecture overview
 
+!!! note "Reference design, not the live presentation"
+    Start with the [twenty-minute operator demo](../demo-guide.md). The diagrams
+    below include extension paths: Concierge is an unexported ALM scaffold, HR
+    is contract-only, and SRE/Approvals are optional. They are not a claim that
+    one deployed Microsoft 365 front door invokes the whole estate.
+
 The Contoso Foundry platform is a reference design for composing specialized
 agents around shared enterprise data, tools, identity, telemetry, and governed
 model access. It separates durable platform contracts from the frameworks and
@@ -85,6 +91,11 @@ Agents access that data through the
 queries. Toolbox validates typed inputs, applies server-derived tenant, user, and
 customer scope, and returns bounded results. This creates one place to enforce
 authorization, audit tool use, and test cross-agent consistency.
+
+The shared Toolbox arrows represent a common code/contract boundary, not one
+deployed central HTTP service. Travel exposes its subset as OpenAPI, while
+Support, Research, and Field embed the library over their generated data.
+Their fixed demo service principals are not per-user delegated identities.
 
 The shared identity contract treats transport identity as evidence, not prompt
 text. Each hosting surface maps its trusted claims into the same principal and
