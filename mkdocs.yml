@@ -1,7 +1,7 @@
 site_name: Contoso Agent Platform
 site_description: >-
-  How Contoso builds a governed, multi-agent platform on Microsoft Foundry -
-  the architecture, the region and cost decisions, and the evidence behind them.
+  Observe, diagnose, govern, and improve a heterogeneous agent estate with
+  Microsoft Foundry and Azure Monitor in a twenty-minute live demo.
 site_url: https://ericchansen.github.io/microsoft-foundry/
 repo_url: https://github.com/ericchansen/microsoft-foundry
 repo_name: ericchansen/microsoft-foundry
@@ -71,9 +71,9 @@ plugins:
 
 nav:
   - Home: index.md
+  - Run the demo: demo-guide.md
   - Architecture:
       - Overview: architecture/overview.md
-      - Demo operator guide: demo-guide.md
   - Shared data and tools:
       - Data spine: data/overview.md
       - Provenance: data/provenance.md

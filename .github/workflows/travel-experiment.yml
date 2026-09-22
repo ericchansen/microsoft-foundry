@@ -1,0 +1,151 @@
+name: Travel paired experiment
+
+on:
+  workflow_dispatch:
+    inputs:
+      run:
+        description: Authorize paid model traffic and eval runs (never deploy or promote)
+        type: boolean
+        required: true
+        default: false
+      baseline_version:
+        description: Existing immutable Travel baseline version (positive integer)
+        type: string
+        required: true
+      candidate_version:
+        description: Existing immutable Travel candidate version (positive integer)
+        type: string
+        required: true
+      judge_deployment:
+        description: Existing pinned judge deployment in the owned Foundry account
+        type: string
+        required: true
+      budget_reserve_usd:
+        description: Approved positive USD reserve including excluded judge/platform costs (not a cap)
+        type: string
+        required: true
+      optional_control_plane:
+        description: Include deployed Approvals/SRE in the ownership inventory
+        type: boolean
+        required: true
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    if: github.ref == 'refs/heads/main' && inputs.run
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment: contoso-agents
+    concurrency:
+      group: azure-rg-contoso-agents
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PYTHONPATH: agents/travel/src
+      BASELINE_VERSION: ${{ inputs.baseline_version }}
+      CANDIDATE_VERSION: ${{ inputs.candidate_version }}
+      JUDGE_DEPLOYMENT: ${{ inputs.judge_deployment }}
+      BUDGET_RESERVE_USD: ${{ inputs.budget_reserve_usd }}
+      OPTIONAL_CONTROL_PLANE: ${{ inputs.optional_control_plane }}
+      PRIVATE_PARENT: internal/travel-experiments/run-${{ github.run_id }}-${{ github.run_attempt }}
+      PUBLIC_OUTPUT: reports/travel-experiment
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Require trusted branch before OIDC
+        run: test "$GITHUB_REF" = "refs/heads/main"
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install existing dependencies
+        run: |
+          pip install -e ".[dev]"
+          pip install -r agents/travel/requirements.txt
+
+      - name: Offline experiment checks
+        run: |
+          ruff check agents/travel/src/contoso_travel_agent/experiments.py tests/test_travel_experiments.py
+          pytest -q tests/test_travel_experiments.py
+
+      - uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # The CLI resolves the endpoint through owned ARM resources, validates
+      # exact versions + prices, and only prints an allowlisted scanned summary.
+      - name: Compare existing versions without changing routing
+        run: |
+          optional_args=()
+          if [ "$OPTIONAL_CONTROL_PLANE" = "true" ]; then
+            optional_args+=(--enable-module optional-control-plane)
+          fi
+          python -m contoso_travel_agent.experiments \
+            --baseline-version "$BASELINE_VERSION" \
+            --candidate-version "$CANDIDATE_VERSION" \
+            --judge-deployment "$JUDGE_DEPLOYMENT" \
+            --budget-reserve-usd "$BUDGET_RESERVE_USD" \
+            --output-dir "$PRIVATE_PARENT" \
+            --timeout-seconds 1200 --request-timeout 90 \
+            "${optional_args[@]}" --run
+
+      # Never upload internal/, responses, eval output items, or report URLs.
+      # Private runner evidence is ephemeral: use the local CLI for durable full
+      # evidence until an independently governed private store is wired.
+      - name: Prepare only sanitized history
+        if: always()
+        shell: python
+        run: |
+          import json
+          import os
+          from pathlib import Path
+          from contoso_foundry.scan import scan_text
+
+          paths = list(Path(os.environ["PRIVATE_PARENT"]).glob("*/summary.json"))
+          if len(paths) == 1:
+              text = paths[0].read_text(encoding="utf-8")
+          else:
+              text = json.dumps({
+                  "execution_status": "error",
+                  "message": "No completed paired comparison. No promotion attempted."
+              }) + "\n"
+          if scan_text(text):
+              raise SystemExit("Refusing summary publication: scanner failed")
+          output = Path(os.environ["PUBLIC_OUTPUT"])
+          output.mkdir(parents=True, exist_ok=False)
+          (output / "summary.json").write_text(text, encoding="utf-8")
+
+      - name: Repository scanner before publication
+        id: scan
+        if: always()
+        run: |
+          test -f "$PUBLIC_OUTPUT/summary.json"
+          foundry scan "$PUBLIC_OUTPUT"
+
+      - name: Publish sanitized step summary
+        if: always() && steps.scan.outcome == 'success'
+        shell: python
+        run: |
+          import os
+          from pathlib import Path
+          text = (Path(os.environ["PUBLIC_OUTPUT"]) / "summary.json").read_text(encoding="utf-8")
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as stream:
+              stream.write("## Travel paired experiment\n\n```json\n" + text + "\n```\n")
+
+      - name: Retain sanitized comparison history
+        if: always() && steps.scan.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: travel-comparison-${{ github.run_id }}-${{ github.run_attempt }}
+          path: reports/travel-experiment/summary.json
+          if-no-files-found: error
+          retention-days: 90

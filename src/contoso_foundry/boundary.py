@@ -27,6 +27,9 @@ import yaml
 from . import azure_cli
 
 RESOURCE_GROUP_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9._\-()]{0,88}[a-z0-9_()]$")
+# Inventory reads include hosted-agent metadata and can outlast an interactive
+# request. Wait for authoritative data; a timeout still fails the boundary.
+FOUNDRY_INVENTORY_TIMEOUT_SECONDS = 90
 
 #: Role-assignment scopes that are never acceptable for this project.
 # Scopes that would place a role assignment above the resource group. Two shapes
@@ -303,7 +306,7 @@ def _augment_declared_inventory(
                 ),
                 params=params,
                 headers={"Authorization": f"Bearer {token}"},
-                timeout=30,
+                timeout=FOUNDRY_INVENTORY_TIMEOUT_SECONDS,
             )
             response.raise_for_status()
             payload = response.json()
@@ -322,7 +325,7 @@ def _augment_declared_inventory(
                     agent_url,
                     params={"api-version": "v1"},
                     headers={"Authorization": f"Bearer {token}"},
-                    timeout=30,
+                    timeout=FOUNDRY_INVENTORY_TIMEOUT_SECONDS,
                 )
                 detail_response.raise_for_status()
                 detail = detail_response.json()
@@ -341,7 +344,7 @@ def _augment_declared_inventory(
                         f"{agent_url}/versions/{version}",
                         params={"api-version": "v1"},
                         headers={"Authorization": f"Bearer {token}"},
-                        timeout=30,
+                        timeout=FOUNDRY_INVENTORY_TIMEOUT_SECONDS,
                     )
                     version_response.raise_for_status()
                     version_payload = version_response.json()

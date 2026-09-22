@@ -1,7 +1,7 @@
 # Sources
 
 Every product, behaviour and pricing claim on this site traces to a first-party
-Microsoft page. All links were verified on **2026-09-01**.
+Microsoft page. Recheck the relevant source before relying on a capability.
 
 Where a capability is in **public preview** it is labelled as such wherever it
 appears. Preview features can change without notice; re-check the source before
@@ -25,6 +25,7 @@ relying on one.
 | Unified `azure.yaml` reference | <https://learn.microsoft.com/azure/foundry/agents/concepts/azure-yaml-reference> |
 | Hosted-agent deployment and protocol contract | <https://learn.microsoft.com/azure/foundry/agents/how-to/deploy-hosted-agent> |
 | Hosted-agent versions, routing and monitoring | <https://learn.microsoft.com/azure/foundry/agents/how-to/manage-hosted-agent> |
+| Named-agent endpoint merge-patch contract | <https://github.com/Azure/azure-rest-api-specs/blob/73972b766e47d15a5342c90913a738bb7809ccee/specification/ai-foundry/data-plane/Foundry/openapi3/v1/microsoft-foundry-openapi3.json#L2604-L2675> |
 | Hosted-agent permissions | <https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agent-permissions> |
 | Private Azure Container Registry deployment | <https://learn.microsoft.com/azure/foundry/agents/how-to/deploy-hosted-agent-private-azure-container-registry> |
 | Hosted-agent virtual networking | <https://learn.microsoft.com/azure/foundry/agents/how-to/virtual-networks> |
@@ -40,6 +41,11 @@ relying on one.
 | Foundry Models pricing | <https://azure.microsoft.com/pricing/details/foundry-models/> |
 | External-agent registration and limitations (public preview) | <https://learn.microsoft.com/azure/foundry/agents/how-to/register-external-agent> |
 | Foundry portal navigation | <https://learn.microsoft.com/azure/foundry/what-is-foundry> |
+| Azure Monitor agent dashboard, fleet inventory and transaction investigation (public preview) | <https://learn.microsoft.com/azure/azure-monitor/app/agents-view> |
+| Foundry fleet monitoring | <https://learn.microsoft.com/azure/foundry/control-plane/monitoring-across-fleet> |
+| Baseline and sample-level evaluation comparisons | <https://learn.microsoft.com/azure/foundry/how-to/evaluate-results> |
+| Response-triggered evaluation rules | <https://learn.microsoft.com/rest/api/microsoft-foundry/aiproject#evaluation-rules> |
+| Gateway-backed custom-agent registration and controls | <https://learn.microsoft.com/azure/foundry/control-plane/register-custom-agent> |
 
 Model quota is **subscription-level**, and Global Standard deployments draw from
 a single pool shared across regions. A region can therefore pass a model
@@ -67,9 +73,13 @@ after that identity exists and only at the resource it must access.
 | AI Gateway static model discovery | <https://github.com/Azure-Samples/AI-Gateway/tree/main/labs/model-routing-factory> |
 | API Management monitoring | <https://learn.microsoft.com/azure/api-management/api-management-howto-use-azure-monitor> |
 | Gateway log schema | <https://learn.microsoft.com/azure/azure-monitor/reference/tables/apimanagementgatewaylogs> |
+| Log Analytics query workspace | <https://learn.microsoft.com/azure/azure-monitor/logs/log-analytics-overview> |
+| Log Analytics query scope and time range | <https://learn.microsoft.com/azure/azure-monitor/logs/scope> |
 | LLM token limits | <https://learn.microsoft.com/azure/api-management/llm-token-limit-policy> |
 | Import a Foundry API | <https://learn.microsoft.com/azure/api-management/azure-ai-foundry-api> |
 | AI Gateway capabilities | <https://learn.microsoft.com/azure/api-management/genai-gateway-capabilities> |
+| Subscription-key access control | <https://learn.microsoft.com/azure/api-management/api-management-subscriptions> |
+| Policy expressions and request correlation | <https://learn.microsoft.com/azure/api-management/api-management-policy-expressions> |
 
 The v2 tiers are available in a **narrower** set of regions than API Management
 itself. The region availability page is the authority, not the resource

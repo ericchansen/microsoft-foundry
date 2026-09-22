@@ -602,22 +602,30 @@ def _verify_guardrail_policy(guardrail: dict[str, Any], *, expected_name: str) -
     if guardrail.get("name") != expected_name:
         raise GatewayConfigError("responsible AI policy name is incorrect")
     properties = guardrail.get("properties", {})
+    violations = []
     if properties.get("mode") != "Blocking":
-        raise GatewayConfigError("responsible AI policy mode must be Blocking")
+        violations.append("responsible AI policy mode must be Blocking")
     if properties.get("basePolicyName") != "Microsoft.DefaultV2":
-        raise GatewayConfigError("responsible AI base policy must be Microsoft.DefaultV2")
+        violations.append("responsible AI base policy must be Microsoft.DefaultV2")
     filters = properties.get("contentFilters")
-    if not isinstance(filters, list):
+    if not isinstance(filters, list) or any(not isinstance(item, dict) for item in filters):
         raise GatewayConfigError("responsible AI content filters are missing")
     by_key = {(item.get("name"), item.get("source")): item for item in filters}
     expected_keys = _SEVERITY_FILTERS | _BINARY_FILTERS
     if set(by_key) != expected_keys or len(filters) != len(expected_keys):
-        raise GatewayConfigError("responsible AI filter inventory is incorrect")
-    for key, item in by_key.items():
+        missing = ", ".join(f"{name}/{source}" for name, source in sorted(expected_keys - by_key.keys()))
+        violations.append(
+            "responsible AI filter inventory is incorrect"
+            + (f"; missing required filters: {missing}" if missing else "")
+        )
+    for key in sorted(expected_keys & by_key.keys()):
+        item = by_key[key]
         if item.get("enabled") is not True or item.get("blocking") is not True:
-            raise GatewayConfigError(f"responsible AI filter {key} must be enabled and blocking")
+            violations.append(f"responsible AI filter {key} must be enabled and blocking")
         if key in _SEVERITY_FILTERS and item.get("severityThreshold") != "Medium":
-            raise GatewayConfigError(f"responsible AI filter {key} must use the Medium threshold")
+            violations.append(f"responsible AI filter {key} must use the Medium threshold")
+    if violations:
+        raise GatewayConfigError("; ".join(violations))
 
 
 def _normalise_location(value: str) -> str:

@@ -11,6 +11,9 @@ from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
+import yaml
+
+from contoso_foundry import boundary, gateway
 from contoso_foundry.data import build as build_mod
 from contoso_travel_agent.definition import create_agent_version, load_agent_spec
 from contoso_travel_agent.evaluation import (
@@ -248,7 +251,17 @@ def evaluate(
     return result
 
 
-def pin_agent_version(project_client: Any, manifest: dict[str, Any]) -> None:
+def endpoint_snapshot(project_client: Any, name: str) -> dict[str, Any]:
+    agent = project_client.agents.get(agent_name=name)
+    endpoint = getattr(agent, "agent_endpoint", None)
+    if endpoint is None:
+        raise OperationsError("the agent has no endpoint configuration to promote")
+    return endpoint.as_dict()
+
+
+def pin_agent_version(
+    project_client: Any, manifest: dict[str, Any], *, expected_endpoint: dict[str, Any],
+) -> None:
     from azure.ai.projects.models import (
         FixedRatioVersionSelectionRule,
         VersionSelector,
@@ -258,11 +271,9 @@ def pin_agent_version(project_client: Any, manifest: dict[str, Any]) -> None:
     version = str(manifest.get("created_version", ""))
     if not name or not version:
         raise OperationsError("promotion requires an exact agent name and version")
-    agent = project_client.agents.get(agent_name=name)
-    endpoint = getattr(agent, "agent_endpoint", None)
-    if endpoint is None:
-        raise OperationsError("the agent has no endpoint configuration to promote")
-    endpoint.version_selector = VersionSelector(
+    if endpoint_snapshot(project_client, name) != expected_endpoint:
+        raise OperationsError("the named endpoint changed; refusing to overwrite another decision")
+    selector = VersionSelector(
         version_selection_rules=[
             FixedRatioVersionSelectionRule(
                 agent_version=version,
@@ -272,11 +283,31 @@ def pin_agent_version(project_client: Any, manifest: dict[str, Any]) -> None:
     )
     updated = project_client.agents.update_details(
         agent_name=name,
-        agent_endpoint=endpoint,
+        body={"agent_endpoint": {"version_selector": selector.as_dict()}},
+        retry_total=0,
     )
     rules = updated.agent_endpoint.version_selector.version_selection_rules
     if len(rules) != 1 or str(rules[0].agent_version) != version or rules[0].traffic_percentage != 100:
         raise OperationsError("the agent endpoint did not pin the accepted version")
+
+
+def governed_pin_agent_version(
+    project_client: Any, manifest: dict[str, Any], repo_root: Path,
+    *, expected_endpoint: dict[str, Any], enabled_modules: list[str] | None = None,
+) -> None:
+    """Recheck live controls immediately before changing an accepted route."""
+    modules = set(enabled_modules or []) | boundary.enabled_modules_from_environment()
+    report = boundary.require_clean_live(
+        repo_root / "config" / "boundary.yaml", enabled_modules=modules,
+    )
+    location = yaml.safe_load((repo_root / "config" / "selected-region.yaml").read_text(encoding="utf-8"))["region"]
+    config = gateway.load_config(repo_root / "config" / "gateway.yaml")
+    status = gateway.collect_status(
+        report.resource_group, "contoso-agents", config, expected_location=location,
+    )
+    if not status.ok:
+        raise OperationsError("live governance preflight failed; the accepted route was not changed")
+    pin_agent_version(project_client, manifest, expected_endpoint=expected_endpoint)
 
 
 def _clients(endpoint: str):
@@ -292,6 +323,7 @@ def main() -> int:
     parser.add_argument("operation", choices=("deploy", "smoke", "evaluate", "verify-continuous"))
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
     parser.add_argument("--manifest", type=Path, default=Path("internal/travel/agent-version.json"))
+    parser.add_argument("--enable-module", action="append", default=[])
     args = parser.parse_args()
     endpoint = os.environ.get("FOUNDRY_PROJECT_ENDPOINT", "")
     if not endpoint:
@@ -327,8 +359,11 @@ def main() -> int:
         )
     else:
         manifest = json.loads((args.repo_root / args.manifest).read_text(encoding="utf-8"))
+        before = endpoint_snapshot(project, str(manifest["agent_name"]))
         result = evaluate(args.repo_root, openai_client, manifest)
-        pin_agent_version(project, manifest)
+        governed_pin_agent_version(
+            project, manifest, args.repo_root, expected_endpoint=before, enabled_modules=args.enable_module,
+        )
     print(json.dumps(result, sort_keys=True))
     return 0
 

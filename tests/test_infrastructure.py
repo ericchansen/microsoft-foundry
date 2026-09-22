@@ -440,29 +440,55 @@ def test_all_external_github_actions_are_commit_pinned(repo_root):
             assert re.fullmatch(r"[^@]+@[0-9a-f]{40}", reference), (path, reference)
 
 
-def test_travel_release_rotation_is_gated_and_decommissions_previous_release(repo_root):
+def test_travel_release_rotation_is_gated_and_preserves_rollback_dependencies(repo_root):
     workflow = (repo_root / ".github" / "workflows" / "travel.yml").read_text(
         encoding="utf-8"
     )
     readiness = workflow.index("foundry boundary --deployment-readiness")
     deploy = workflow.index("- name: Deploy authenticated Travel tool service")
     candidate = workflow.index("- name: Create, smoke, and evaluate exact candidate")
-    decommission = workflow.index("- name: Decommission superseded tool release")
+    retain = workflow.index("- name: Retain preceding tool release for rollback")
     converged = workflow.index("- name: Verify converged live boundary")
 
-    assert readiness < deploy < candidate < decommission < converged
+    assert readiness < deploy < candidate < retain < converged
     assert "rotate_tool_key:" in workflow
     assert 'mode=rotate' in workflow
-    assert 'mode=resume' in workflow
+    assert 'mode=resume' not in workflow
     assert 'More than two Travel tool releases exist' in workflow
     assert 'surplus_releases="$(comm -13' in workflow
     assert 'partial Travel deployment exists for an unexpected release' in workflow
     assert 'live_image="$(az containerapp show' in workflow
     assert 'test "$previous" != "$current"' in workflow
-    assert "travel-openapi-${previous}" in workflow
+    retained_rotation = workflow.split(
+        "if (( ${#connections[@]} == 2 )); then", maxsplit=1,
+    )[1].split("elif (( ${#connections[@]} == 1 )); then", maxsplit=1)[0]
+    assert re.search(
+        r'if \[\[ "\$\{\{ inputs.rotate_tool_key \}\}" != "true" \]\]; then\s+'
+        r'echo "[^"]*already exists[^"]*" >&2\s+exit 1\s+fi',
+        retained_rotation,
+    )
+    for step in yaml.safe_load(workflow)["jobs"]["deploy"]["steps"]:
+        if step.get("name") in {
+            "Create, smoke, and evaluate exact candidate",
+            "Deploy disabled-by-default job with exact candidate",
+        }:
+            assert step["if"] == "steps.release.outputs.mode != 'rotate'"
+    retained_step = workflow[retain:converged]
+    assert "backend, connection, identity and scoped roles" in retained_step
+    assert "delete" not in retained_step
+    assert "travel_resolve_locations" in workflow
+    assert "provision_shared_infrastructure:" in workflow
+    assert 'deploySharedInfrastructure="$PROVISION_SHARED_INFRASTRUCTURE"' in workflow
+    assert "deploySharedInfrastructure=false" in workflow
     travel_bicep = (repo_root / "infra" / "travel.bicep").read_text(encoding="utf-8")
     assert "TRAVEL_TOOL_CREDENTIAL_REVISION" in travel_bicep
     assert "value: uniqueString(toolApiKey)" in travel_bicep
+    assert "param deploySharedInfrastructure bool = true" in travel_bicep
+    for name in ("trafficIdentity", "foundryUser", "registryPull", "environment"):
+        assert re.search(
+            rf"resource {name} '[^']+' = if \(deploySharedInfrastructure\)",
+            travel_bicep,
+        )
 
 
 def test_infra_confirmation_input_is_not_interpolated_into_shell(repo_root):

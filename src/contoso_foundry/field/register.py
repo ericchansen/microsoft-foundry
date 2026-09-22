@@ -170,6 +170,11 @@ union isfuzzy=true dependencies, requests, traces
             application_insights_name,
             "--analytics-query",
             query,
+            # The CLI's default one-hour API window also filters the KQL results.
+            "--start-time",
+            started_at,
+            "--end-time",
+            datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         ]
     )
     if not isinstance(payload, dict):

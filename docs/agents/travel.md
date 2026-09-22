@@ -8,13 +8,13 @@ current live deployment state.
 | Definition | Code-defined modern Foundry prompt agent |
 | Model | `gpt-5.4-mini`, exact version `2026-03-17` |
 | Deployment | Global Standard, no automatic model upgrade |
-| Tools | Authenticated OpenAPI routes, fares, policy, and booking simulation |
+| Tools | Authenticated OpenAPI location resolution, routes, fares, policy, and booking simulation |
 | Identity | Synthetic principal resolved on the server |
 | Writes | None; booking is a simulation |
 | Telemetry service | `contoso-travel` |
 
 The agent is created with `PromptAgentDefinition`, a typed `OpenApiTool`, and
-`create_version`. Foundry executes the four HTTPS operations server-side and
+`create_version`. Foundry executes the HTTPS operations server-side and
 supplies their API key from a project connection; the key is not part of the
 agent definition. Calls use the Responses API and name an exact agent version.
 There is no "first agent" lookup and no fallback candidate. Microsoft documents
@@ -43,20 +43,22 @@ filter; it cannot choose whose rows it reads.
 
 ## Foundry Playground demo
 
-Open the `travel` project in Foundry, select the newest immutable
-`contoso-travel` version, and send:
+Follow the [operator guide](../demo-guide.md) for the complete presentation.
+Open the `travel` project in Foundry and select the exact accepted
+`contoso-travel` version recorded by the release, not automatically the newest
+version. For the natural-language conversation, send:
 
-> Find the synthetic route from LOC-001 (Contoso Seattle Headquarters) to
-> LOC-002 (Contoso Chicago Distribution).
+> I need to travel from our Seattle headquarters to the Chicago distribution
+> center. Which route should I use?
 
-The Playground completes the turn autonomously and cites `ROUTE-0001`. It does
+The accepted location-aware definition resolves the named endpoints before
+route lookup and can cite `ROUTE-0001`. It does
 not pause for **Enter function output as JSON** because the agent contains one
 server-executed OpenAPI tool rather than client-executed function definitions.
 The same browser flow supports:
 
-- `What synthetic travel policy applies to me?`
-- `Find the published synthetic fares on ROUTE-0001.`
-- `First use travel_search_fares to read the published synthetic fares on ROUTE-0001. Then simulate, but do not purchase, the first returned fare for 2026-09-15.`
+- `What is the published economy fare for that route, and is it allowed under my travel policy?`
+- `Please simulate that fare for 2026-09-15. Do not purchase anything.`
 
 The final prompt is a simulation only. The service exposes no purchase operation
 and does not expose the scoped bookings-list operation.
@@ -114,23 +116,26 @@ Promotion is candidate-first:
 1. deploy a backend and project connection whose release name is bound to the
    agent definition major version while retaining the previous release during
    candidate verification;
-2. authenticate directly to all four operations and require deterministic evidence;
+2. authenticate to the allow-listed operations, including name resolution, and require deterministic evidence;
 3. create one immutable agent version and persist its name, version, model version,
    and definition digest under the non-published `internal/` path;
-4. invoke that exact version with the golden JSONL and verify the completed OpenAPI
-   calls and arguments returned in Responses API metadata;
-5. submit the captured outputs to the real eval API, poll to a terminal state, and
-   require every quality, safety, task, and tool criterion to pass;
-6. remove the superseded backend, connection, identity, and exact least-privilege
-   roles so the live boundary again contains one active release;
-7. place the accepted version and exact image digest in the disabled job without
-   redeploying the validated backend.
+4. compare baseline and candidate using the checked-in operator cases and a fixed
+   judge, retaining responses, completed OpenAPI calls, usage, and per-case results;
+5. use the explicit release command to reread cloud results, require six distinct
+   passing business cases, verify dependencies, and confirm the named route;
+6. retain the preceding backend, connection, identity, image, and scoped roles
+   for rollback; retire an older bundle only through a separate reviewed change;
+7. update the job's accepted version and image without changing its calendar,
+   identity, limits, or persistent maintenance settings.
 
 Re-running an existing release is refused because changing its image would alter
 previous agent versions. Credential rotation is an explicit exception: it preserves
 the live image and updates only the backend secret and project connection.
+Keeping a rollback release does not enable an implicit resume path: a normal
+rerun still stops before credential generation, candidate creation, or traffic
+job deployment.
 
-The verified manual API path is:
+The original deployment commands remain available for infrastructure delivery:
 
 ```powershell
 $env:PYTHONPATH = "src;agents\travel\src"
@@ -140,10 +145,22 @@ python -m contoso_travel_agent.operations smoke
 python -m contoso_travel_agent.operations evaluate
 ```
 
-The current OpenAI eval client exposes create, run, list, retrieve, and output-item
-operations, but no continuous schedule or intelligent-sampling configuration.
-Until that API surface exists, CI and the runbook execute the fixed golden set on
-each exact candidate. Raw per-sample output stays under `internal/`.
+These are **not read-only rehearsal commands**: `operations deploy` creates a
+version, and `operations evaluate` runs the legacy exact-candidate golden gate
+and pins that candidate only after current ownership and governance gates pass.
+Use `--enable-module optional-control-plane` when those optional resources are
+deployed, or supply the enabled modules through `FOUNDRY_ENABLED_MODULES`.
+For the operator story, use the separate paired
+`experiments` and explicit `release` commands in the
+[presenter guide](../demo-guide.md#15-20-minutes-compare-and-improve).
+
+Continuous evaluation uses the project's
+[evaluation-rule API](https://learn.microsoft.com/rest/api/microsoft-foundry/aiproject#evaluation-rules),
+which is separate from the OpenAI-compatible evaluation client. A rule triggered
+by completed responses needs a response-compatible evaluation source. Do not
+attach it to the custom golden JSONL schema that requires fields such as
+`case_id`. A passing continuous content-safety result is not evidence of
+business task correctness. Raw per-sample outputs stay under `internal/`.
 
 `evals/azure.eval.yaml` also declares a trace-sourced discovery evaluation. The
 current public-preview `azd ai eval` contract can filter traces by agent name but

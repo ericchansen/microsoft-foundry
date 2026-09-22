@@ -34,6 +34,7 @@ var connectionAuthConfig = {
   name: 'Ocp-Apim-Subscription-Key'
   format: '{api_key}'
 }
+var requestIdHeader = '<set-header name="x-contoso-gateway-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>'
 
 resource gateway 'Microsoft.ApiManagement/service@2024-05-01' existing = {
   name: gatewayName
@@ -168,7 +169,7 @@ resource projectApiPolicies 'Microsoft.ApiManagement/service/apis/policies@2024-
     parent: projectApis[index]
     properties: {
       format: 'rawxml'
-      value: '<policies><inbound><base /><include-fragment fragment-id="${projectName}-token-governance" /><set-backend-service backend-id="${foundryBackend.name}" /><authentication-managed-identity resource="https://cognitiveservices.azure.com" /></inbound><backend><forward-request /></backend><outbound><base /></outbound><on-error><base /></on-error></policies>'
+      value: '<policies><inbound><base /><include-fragment fragment-id="${projectName}-token-governance" /><set-backend-service backend-id="${foundryBackend.name}" /><authentication-managed-identity resource="https://cognitiveservices.azure.com" /></inbound><backend><forward-request /></backend><outbound><base />${requestIdHeader}</outbound><on-error><base />${requestIdHeader}</on-error></policies>'
     }
     dependsOn: [
       gatewayFoundryAccess
@@ -182,7 +183,7 @@ resource defaultApiPolicy 'Microsoft.ApiManagement/service/apis/policies@2024-05
   parent: defaultApi
   properties: {
     format: 'rawxml'
-    value: '<policies><inbound><base /><include-fragment fragment-id="${defaultTokenPolicy.name}" /><set-backend-service backend-id="${foundryBackend.name}" /><authentication-managed-identity resource="https://cognitiveservices.azure.com" /></inbound><backend><forward-request /></backend><outbound><base /></outbound><on-error><base /></on-error></policies>'
+    value: '<policies><inbound><base /><include-fragment fragment-id="${defaultTokenPolicy.name}" /><set-backend-service backend-id="${foundryBackend.name}" /><authentication-managed-identity resource="https://cognitiveservices.azure.com" /></inbound><backend><forward-request /></backend><outbound><base />${requestIdHeader}</outbound><on-error><base />${requestIdHeader}</on-error></policies>'
   }
   dependsOn: [
     gatewayFoundryAccess

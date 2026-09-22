@@ -167,13 +167,30 @@ class ServerExecutedTravelRuntime:
             raise AgentRuntimeError(f"unexpected server-executed tool name {tool_name!r}")
         return matches[0]
 
-    def run_turn(self, prompt: str, *, agent_version: str) -> str:
+    def run_turn(
+        self,
+        prompt: str,
+        *,
+        agent_version: str,
+        previous_response_id: str | None = None,
+    ) -> str:
+        # Failed turns must not leave a previous turn's successful evidence visible.
+        self._response = None
+        self._executed_calls = []
         if not prompt.strip():
             raise AgentRuntimeError("prompt must not be empty")
         if not agent_version.strip():
             raise AgentRuntimeError("an exact agent version is required")
+        if previous_response_id is not None and not previous_response_id.strip():
+            raise AgentRuntimeError("previous_response_id must be nonempty when supplied")
+        continuation = (
+            {"previous_response_id": previous_response_id}
+            if previous_response_id is not None
+            else {}
+        )
         response = self._client.responses.create(
             input=prompt,
+            **continuation,
             extra_body={
                 "agent_reference": {
                     "name": self._spec.name,
@@ -182,6 +199,9 @@ class ServerExecutedTravelRuntime:
                 }
             },
         )
+        # Preserve provider metadata (including usage and response ID) even when
+        # validation fails, without treating incomplete calls as executed tools.
+        self._response = response
         callbacks = [
             item
             for item in response.output
@@ -231,6 +251,5 @@ class ServerExecutedTravelRuntime:
         text = str(getattr(response, "output_text", "")).strip()
         if not text:
             raise AgentRuntimeError("the server-executed agent returned no final text")
-        self._response = response
         self._executed_calls = executed_calls
         return text

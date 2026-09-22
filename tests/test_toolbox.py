@@ -95,6 +95,53 @@ def toolbox_for(connection: sqlite3.Connection, principal: tuple[str, str], **kw
     return Toolbox(connection, principal_from_fixture(*principal), contracts_dir=CONTRACTS_DIR, **kwargs)
 
 
+@pytest.mark.parametrize("destination", [
+    "Chicago", "Chicago distribution center", "Contoso Chicago Distribution",
+    "Chicago distribution-centre", "LOC-002",
+])
+def test_travel_resolves_natural_places_without_changing_scope(connection, destination):
+    toolbox = toolbox_for(connection, TRAVEL)
+    origin = toolbox.call("travel_resolve_locations", {"query": "Seattle"})
+    target = toolbox.call("travel_resolve_locations", {"query": destination})
+    assert origin["status"] == target["status"] == "unique"
+    routes = toolbox.call("travel_search_routes", {
+        "origin_location_id": origin["matches"][0]["location_id"],
+        "destination_location_id": target["matches"][0]["location_id"],
+    })
+    assert routes
+    assert {route["route_id"] for route in routes} == {"ROUTE-0001"}
+    assert set(target["matches"][0]) == {"location_id", "name", "city", "country", "kind"}
+    scoped = ScopedRepository(connection, toolbox.scope).list_rows("locations")
+    assert {row["region"] for row in scoped} == {"EMEA"}
+    assert "locations" not in GLOBAL_TABLES
+
+
+def test_travel_resolution_reports_ambiguity_and_no_match_without_fallback(connection):
+    toolbox = toolbox_for(connection, TRAVEL)
+    ambiguous = toolbox.call("travel_resolve_locations", {"query": "office"})
+    assert ambiguous["status"] == "ambiguous"
+    assert len(ambiguous["matches"]) > 1
+    for query in ("Atlantis", "Seattle Atlantis", "' OR 1=1 --", "LOC-999"):
+        assert toolbox.call("travel_resolve_locations", {"query": query}) == {
+            "status": "not_found", "matches": [],
+        }
+
+
+@pytest.mark.parametrize("query", [" ", "---", "x" * 201])
+def test_travel_resolution_rejects_empty_or_unbounded_query(connection, query):
+    with pytest.raises(ToolError, match="query"):
+        toolbox_for(connection, TRAVEL).call("travel_resolve_locations", {"query": query})
+
+
+def test_travel_resolution_retains_role_and_argument_guards(connection):
+    with pytest.raises(PermissionError):
+        toolbox_for(connection, PLANNER).call("travel_resolve_locations", {"query": "Seattle"})
+    with pytest.raises(ToolError, match="unexpected"):
+        toolbox_for(connection, TRAVEL).call(
+            "travel_resolve_locations", {"query": "Seattle", "region": "AMER"},
+        )
+
+
 # --------------------------------------------------------------------------- #
 # Contracts
 # --------------------------------------------------------------------------- #

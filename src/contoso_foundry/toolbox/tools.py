@@ -15,6 +15,7 @@ from __future__ import annotations
 import datetime as dt
 import re
 import sqlite3
+import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -258,6 +259,7 @@ class Toolbox:
             "orders_search_orders": self._orders_search_orders,
             "orders_lookup_invoice": self._orders_lookup_invoice,
             "orders_search_invoices": self._orders_search_invoices,
+            "travel_resolve_locations": self._travel_resolve_locations,
             "travel_search_routes": self._travel_search_routes,
             "travel_search_fares": self._travel_search_fares,
             "travel_get_policy": self._travel_get_policy,
@@ -345,6 +347,33 @@ class Toolbox:
         return self._repository.list_rows("invoices", filters=filters, limit=limit)
 
     # -- travel --------------------------------------------------------
+
+    def _travel_resolve_locations(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        query = arguments["query"].strip()
+        if not query or len(query) > 200:
+            raise ToolError("location query must contain 1 to 200 characters")
+
+        def tokens(value: str) -> set[str]:
+            normalized = unicodedata.normalize("NFKD", value.casefold())
+            normalized = "".join(char for char in normalized if not unicodedata.combining(char))
+            words = "".join(char if char.isalnum() else " " for char in normalized).split()
+            return {"center" if word == "centre" else word for word in words}
+
+        requested = tokens(query)
+        if not requested:
+            raise ToolError("location query must contain a name, city, or location identifier")
+        matches = []
+        for location in self._repository.travel_locations():
+            # These are generic facility aliases, never mappings to a city or ID.
+            label = " ".join(str(value) for value in location.values())
+            if location["kind"] == "distribution":
+                label += " center"
+            if requested <= tokens(label):
+                matches.append(location)
+        return {
+            "status": "unique" if len(matches) == 1 else ("ambiguous" if matches else "not_found"),
+            "matches": matches,
+        }
 
     def _travel_search_routes(self, arguments: dict[str, Any]) -> list[dict[str, Any]]:
         filters, limit = self._split_limit(arguments)
