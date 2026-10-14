@@ -275,7 +275,7 @@ module identities 'modules/identity.bicep' = {
   ]
 }
 
-resource monthlyBudget 'Microsoft.Consumption/budgets@2024-08-01' = {
+resource monthlyBudget 'Microsoft.Consumption/budgets@2026-06-01' = {
   name: '${resourcePrefix}-monthly'
   properties: {
     amount: monthlyBudgetUsd
