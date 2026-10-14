@@ -1,14 +1,3 @@
-"""Region selection: the gates, the ranking order, and the refusals.
-
-These are pure-function tests. Every Azure probe is injected or monkeypatched,
-so nothing here touches the network or a subscription.
-
-The refusal cases matter more than the happy path. A region gate that quietly
-downgrades a *failed probe* into a *negative result* produces a confident,
-well-formatted, wrong answer -- which is worse than an error, because nobody
-re-runs it.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -79,7 +68,6 @@ class TestReliabilityGate:
 
 
 class TestModelAndQuotaGate:
-    """A failed probe must abort, not eliminate."""
 
     def test_probe_failure_aborts_instead_of_eliminating(self, monkeypatch):
         monkeypatch.setattr(regions, "_models_in_region", lambda region: None)
@@ -162,7 +150,6 @@ class TestRanking:
         assert [r.name for r in ranked] == ["expensive", "unpriced"]
 
     def test_refuses_to_rank_when_nothing_can_be_priced(self, monkeypatch):
-        """A pricing outage must not silently become a region decision."""
         monkeypatch.setattr(
             regions.costs, "price_basket", lambda basket, region, client: (0.0, ["API unreachable"])
         )

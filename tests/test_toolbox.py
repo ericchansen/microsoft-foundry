@@ -1,11 +1,3 @@
-"""Tests for the tool contracts, the scoped repository and the fail-closed identity path.
-
-The tests that matter most here are the negative ones. It is easy to show that a
-scoped query returns rows; the interesting question is whether anything a caller
-can say - a filter, a guessed identifier, an extra argument, a rephrased
-aggregate - can make it return somebody else's.
-"""
-
 from __future__ import annotations
 
 import sqlite3
@@ -157,7 +149,6 @@ def test_contracts_cover_every_capability_area() -> None:
 
 
 def test_no_contract_parameter_can_express_an_identity() -> None:
-    """The central invariant: nothing a caller sends can choose whose data they read."""
     for contract in load_contracts(CONTRACTS_DIR):
         for tool in contract.tools:
             for name in tool.parameter_names:
@@ -227,7 +218,6 @@ def test_contract_enums_match_the_generated_closed_vocabularies() -> None:
 
 @pytest.mark.parametrize("forbidden", sorted(FORBIDDEN_PARAMETERS)[:8])
 def test_a_contract_declaring_a_scope_parameter_is_rejected(tmp_path: Path, forbidden: str) -> None:
-    """A negative test on the validator itself, so the gate is known to bite."""
     document = f"""
 capability: demo
 version: 1.0.0
@@ -337,12 +327,6 @@ tools:
 
 
 def test_contract_id_patterns_match_the_generated_identifiers(connection: sqlite3.Connection) -> None:
-    """Guards against a pattern drifting away from the ids the generator emits.
-
-    A contract that declares ``^CUS-\\d{4}$`` while the spine emits ``CUST-00001``
-    is a contract every real call fails, and nothing else in the suite would
-    notice until an agent tried to use it.
-    """
     import re
 
     table_for_parameter = {
@@ -385,7 +369,6 @@ def test_an_unknown_principal_is_refused(connection: sqlite3.Connection) -> None
 
 
 def test_a_known_oid_in_the_wrong_tenant_is_refused(connection: sqlite3.Connection) -> None:
-    """A valid principal from another tenant must not resolve. Cross-tenant is the worst leak."""
     with pytest.raises(UnknownPrincipalError):
         IdentityResolver(connection).resolve(Principal("OID-EMEA-HRBP-01", "TID-SOMEBODY-ELSE"))
 
@@ -398,7 +381,6 @@ def test_an_empty_principal_cannot_be_constructed() -> None:
 
 
 def test_an_unknown_principal_fails_before_any_tool_exists(connection: sqlite3.Connection) -> None:
-    """Fail-closed is structural: there is no Toolbox to call, not an empty one."""
     with pytest.raises(UnknownPrincipalError):
         toolbox_for(connection, ("OID-NOT-REAL", "TID-CONTOSO-01"))
 
@@ -440,7 +422,6 @@ def test_the_same_prompt_returns_disjoint_rosters(connection: sqlite3.Connection
 
 
 def test_counts_agree_with_the_rows_each_caller_can_see(connection: sqlite3.Connection) -> None:
-    """An unscoped count would be a slow read of the rows it counts."""
     for principal, region in ((EMEA, "EMEA"), (APAC, "APAC")):
         toolbox = toolbox_for(connection, principal)
         rows = toolbox.call("hr_search_roster", {"limit": 200})
@@ -452,13 +433,11 @@ def test_counts_agree_with_the_rows_each_caller_can_see(connection: sqlite3.Conn
 def test_asking_for_another_region_returns_nothing_rather_than_that_region(
     connection: sqlite3.Connection,
 ) -> None:
-    """The filter narrows inside the scope; it never replaces it."""
     rows = toolbox_for(connection, EMEA).call("hr_search_roster", {"region": "APAC", "limit": 200})
     assert rows == []
 
 
 def test_the_global_director_sees_all_three_regions(connection: sqlite3.Connection) -> None:
-    """Scope widening is a property of the directory, not of the request."""
     rows = toolbox_for(connection, GLOBAL_HR).call("hr_search_roster", {"limit": 200})
     assert {row["region"] for row in rows} == {"AMER", "EMEA", "APAC"}
 
@@ -494,7 +473,6 @@ def test_a_regional_partner_sees_strictly_fewer_people_than_the_director(
 def test_scope_cannot_be_injected_through_tool_arguments(
     connection: sqlite3.Connection, injected: dict[str, object]
 ) -> None:
-    """Every one of these is refused as an undeclared argument, not quietly ignored."""
     toolbox = toolbox_for(connection, EMEA)
     with pytest.raises(ToolError, match="unexpected argument"):
         toolbox.call("hr_search_roster", {"limit": 5, **injected})
@@ -507,7 +485,6 @@ def test_a_filter_on_an_undeclared_column_is_refused(connection: sqlite3.Connect
 
 
 def test_the_repository_refuses_a_filter_outside_the_allow_list(connection: sqlite3.Connection) -> None:
-    """Defence in depth: even reached directly, the repository refuses."""
     scope = IdentityResolver(connection).resolve(principal_from_fixture(*EMEA))
     repository = ScopedRepository(connection, scope)
     with pytest.raises(ScopeViolationError, match="not a filterable column"):
@@ -515,7 +492,6 @@ def test_the_repository_refuses_a_filter_outside_the_allow_list(connection: sqli
 
 
 def test_the_repository_never_serves_the_identity_table(connection: sqlite3.Connection) -> None:
-    """An agent that can read the identity map can enumerate principals."""
     scope = IdentityResolver(connection).resolve(principal_from_fixture(*GLOBAL_HR))
     repository = ScopedRepository(connection, scope)
     for call in (
@@ -529,7 +505,6 @@ def test_the_repository_never_serves_the_identity_table(connection: sqlite3.Conn
 
 
 def test_a_table_with_no_declared_scope_path_is_refused(connection: sqlite3.Connection) -> None:
-    """A new table is denied until somebody decides how it is scoped."""
     scope = IdentityResolver(connection).resolve(principal_from_fixture(*EMEA))
     repository = ScopedRepository(connection, scope)
     with pytest.raises(ScopeViolationError, match="no declared scope path"):
@@ -537,7 +512,6 @@ def test_a_table_with_no_declared_scope_path_is_refused(connection: sqlite3.Conn
 
 
 def test_every_table_is_either_global_or_has_a_scope_path() -> None:
-    """No table may be reachable without an explicit scoping decision."""
     from contoso_foundry.data.model import SCHEMA
     from contoso_foundry.toolbox.repository import FORBIDDEN_TABLES
 
@@ -566,12 +540,6 @@ def test_every_surviving_group_meets_the_cohort_floor(connection: sqlite3.Connec
 
 
 def test_small_cohorts_are_withheld_from_the_aggregate(connection: sqlite3.Connection) -> None:
-    """The suppression must actually remove people, not merely be available to.
-
-    Compares the aggregate's coverage against the caller's own scoped count: if
-    the groups add up to fewer people than the caller can see, a group was
-    withheld.
-    """
     toolbox = toolbox_for(connection, EMEA, minimum_cohort=5)
     total = toolbox.call("hr_count_roster", {})["count"]
     groups = toolbox.call("hr_aggregate_roster", {"group_by": "department"})
@@ -580,12 +548,6 @@ def test_small_cohorts_are_withheld_from_the_aggregate(connection: sqlite3.Conne
 
 
 def test_raising_the_cohort_floor_withholds_more(connection: sqlite3.Connection) -> None:
-    """Derive the floor from the data rather than guessing a number.
-
-    A hard-coded floor either withholds nothing or everything depending on how
-    the generator happens to distribute people, which makes the test a statement
-    about this week's volumes instead of about the suppression rule.
-    """
     baseline = toolbox_for(connection, EMEA, minimum_cohort=1).call("hr_aggregate_roster", {"group_by": "department"})
     assert len(baseline) > 1, "one group cannot demonstrate a floor"
 
@@ -598,7 +560,6 @@ def test_raising_the_cohort_floor_withholds_more(connection: sqlite3.Connection)
 
 
 def test_an_aggregate_where_every_group_is_small_is_refused(connection: sqlite3.Connection) -> None:
-    """Returning an empty list would be indistinguishable from "no such people"."""
     toolbox = toolbox_for(connection, EMEA, minimum_cohort=10_000)
     with pytest.raises(CohortTooSmallError):
         toolbox.call("hr_aggregate_roster", {"group_by": "department"})
@@ -611,7 +572,6 @@ def test_an_aggregate_cannot_group_by_an_undeclared_column(connection: sqlite3.C
 
 
 def test_the_aggregate_role_is_separate_from_the_read_role(connection: sqlite3.Connection) -> None:
-    """A caller who may read rows is not automatically allowed to aggregate them."""
     toolbox = toolbox_for(connection, TRAVEL)
     with pytest.raises(PermissionError):
         toolbox.call("hr_aggregate_roster", {"group_by": "department"})
@@ -638,7 +598,6 @@ def test_the_schema_path_never_exposes_a_non_filterable_column_as_filterable(
 
 
 def test_a_management_chain_stops_at_the_edge_of_scope(connection: sqlite3.Connection) -> None:
-    """The regional partner's chain must not run into a global executive."""
     emea = toolbox_for(connection, EMEA)
     chain = emea.call("hr_get_management_chain", {"employee_id": emea.scope.employee_id})
     assert chain
@@ -675,7 +634,6 @@ def test_orders_inherit_scope_from_their_customer(connection: sqlite3.Connection
 
 
 def test_a_guessed_out_of_scope_identifier_looks_like_a_miss(connection: sqlite3.Connection) -> None:
-    """Knowing an id is not an entitlement, and the response must not confirm the guess."""
     apac = toolbox_for(connection, OPS)
     apac_work_orders = apac.call("operations_search_work_orders", {"limit": 5})
     assert apac_work_orders
@@ -698,7 +656,6 @@ def test_an_out_of_scope_lookup_by_id_returns_nothing(connection: sqlite3.Connec
 
 
 def test_the_catalogue_is_deliberately_company_wide(connection: sqlite3.Connection) -> None:
-    """Not everything is scoped, and pretending otherwise would break the assistant."""
     products = toolbox_for(connection, PLANNER).call("catalog_search_products", {"limit": 200})
     assert len(products) > 50
 
@@ -719,7 +676,6 @@ def test_stock_is_scoped_even_though_the_catalogue_is_not(connection: sqlite3.Co
 
 
 def test_the_travel_policy_tool_takes_no_arguments(connection: sqlite3.Connection) -> None:
-    """There is nothing to argue with: the applicable policy follows from the scope."""
     contract = load_contract(CONTRACTS_DIR / "travel.yaml")
     assert contract.tool("travel_get_policy").parameter_names == ()
 
@@ -874,7 +830,6 @@ def test_a_case_can_be_retriaged_within_scope(connection: sqlite3.Connection) ->
 
 
 def test_a_case_outside_scope_cannot_be_written(connection: sqlite3.Connection) -> None:
-    """Read-before-write: a guessed id must fail as though it did not exist."""
     apac_case = toolbox_for(connection, APAC)
     # The APAC people partner cannot search cases, so take an out-of-region id
     # straight from the database - the strongest form of "the caller guessed it".
@@ -891,7 +846,6 @@ def test_a_case_outside_scope_cannot_be_written(connection: sqlite3.Connection) 
 
 
 def test_a_case_cannot_be_reassigned_through_the_update(connection: sqlite3.Connection) -> None:
-    """Reassignment would move a row into somebody else's scope."""
     toolbox = toolbox_for(connection, SUPPORT)
     case = toolbox.call("support_search_cases", {"limit": 1})[0]
     with pytest.raises(ToolError, match="unexpected argument"):
@@ -899,12 +853,6 @@ def test_a_case_cannot_be_reassigned_through_the_update(connection: sqlite3.Conn
 
 
 def test_internal_notes_are_withheld_from_read_only_callers(connection: sqlite3.Connection) -> None:
-    """Pick an internal note that is definitely inside the support lead's region.
-
-    Sampling any internal note would make the test skip whenever the generator
-    happened to place it elsewhere, and a test that sometimes does not run is not
-    a gate.
-    """
     row = connection.execute(
         "SELECT n.case_id FROM support_case_notes n "
         "JOIN support_cases sc ON sc.case_id = n.case_id "
@@ -1006,7 +954,6 @@ def test_the_smoke_client_demonstrates_isolation(database: Path) -> None:
 
 
 def test_the_smoke_client_exercises_the_required_capabilities(database: Path) -> None:
-    """The acceptance criterion: customer context, travel and a scoped HR tool."""
     exercised = run_smoke(database, CONTRACTS_DIR).tools_exercised
     assert "customer_get_caller_context" in exercised
     assert any(name.startswith("travel_") for name in exercised)
@@ -1015,13 +962,6 @@ def test_the_smoke_client_exercises_the_required_capabilities(database: Path) ->
 
 
 def test_no_contract_declares_a_file_export(connection: sqlite3.Connection) -> None:
-    """Export is omitted on purpose.
-
-    A safe export needs private, short-lived, user-bound storage, formula
-    neutralisation, a retention policy and an audit trail. None of those exist in
-    this layer, so the capability does not either - a half-built export is a data
-    exfiltration route with a progress bar.
-    """
     for contract in load_contracts(CONTRACTS_DIR):
         for tool in contract.tools:
             assert "export" not in tool.name

@@ -1,11 +1,3 @@
-"""The ownership boundary is the check that stands between a demo and an incident.
-
-These tests are written against the failure modes that would actually cost
-something: a plan that quietly addresses another subscription, a role assignment
-scoped wider than the resource group, adopting infrastructure someone else owns,
-and creating resources with no way to remove them.
-"""
-
 from __future__ import annotations
 
 from typing import Any
@@ -43,7 +35,6 @@ class TestHappyPath:
         assert report.violations == []
 
     def test_every_check_is_recorded_even_when_it_passes(self):
-        """A silent pass is indistinguishable from a check that never ran."""
         report = boundary.check_plan(plan(), expected_resource_group=RG)
         assert report.checks_run == [
             "plan:modules",
@@ -167,7 +158,6 @@ class TestHappyPath:
 
 
 class TestDiagnosticTargets:
-    """Where telemetry lands decides whether it leaves the boundary."""
 
     def test_rejects_a_workspace_this_plan_does_not_create(self):
         report = boundary.check_plan(
@@ -228,7 +218,6 @@ class TestDiagnosticTargets:
 
 class TestResourceGroupName:
     def test_rejects_a_plan_that_moves_the_boundary(self):
-        """Changing the boundary must be a deliberate, reviewed edit."""
         report = boundary.check_plan(plan(resource_group="rg-something-else"), expected_resource_group=RG)
         assert "plan:resource-group-name" in failed_checks(report)
 
@@ -239,12 +228,6 @@ class TestResourceGroupName:
 
 
 class TestRelativeScopes:
-    """Relative scopes are what keep the subscription ID out of tracked files.
-
-    An absolute scope would have to name a subscription to be useful, so
-    forbidding them removes the opportunity to leak one rather than relying on
-    anyone remembering not to.
-    """
 
     @pytest.mark.parametrize(
         "scope",
@@ -260,12 +243,10 @@ class TestRelativeScopes:
         assert "plan:relative-scopes" in failed_checks(report)
 
     def test_rejects_a_missing_scope(self):
-        """An undeclared scope is not 'probably fine'; it is unreviewable."""
         report = boundary.check_plan(plan(resources=[{"name": "x"}]))
         assert "plan:relative-scopes" in failed_checks(report)
 
     def test_checks_identities_and_teardown_too(self, ):
-        """Every section that declares a scope is subject to the same rule."""
         report = boundary.check_plan(plan(identities=[{"name": "id", "scope": "/subscriptions/abc"}]))
         assert "plan:relative-scopes" in failed_checks(report)
 
@@ -306,7 +287,6 @@ class TestTeardownCompleteness:
         assert "plan:teardown-completeness" in failed_checks(report)
 
     def test_deleting_the_resource_group_satisfies_everything_inside_it(self):
-        """Enumerating children of a group that is itself deleted is busywork."""
         report = boundary.check_plan(
             plan(resources=[{"name": "a", "scope": "providers/X"}, {"name": "b", "scope": "providers/Y"}]),
             expected_resource_group=RG,
@@ -316,7 +296,6 @@ class TestTeardownCompleteness:
 
 class TestProvisioningGate:
     def test_refuses_to_create_the_group_when_the_boundary_is_dirty(self):
-        """This is the property that makes the check a gate rather than a report."""
         report = boundary.check_plan(plan(resource_group="rg-wrong"), expected_resource_group=RG)
         assert not report.ok
         with pytest.raises(PermissionError):

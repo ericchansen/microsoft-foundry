@@ -1,11 +1,3 @@
-"""Redaction: the difference between detecting a secret and removing it.
-
-A detection regex answers "is something here?". A redaction span answers "what
-must be deleted?". Conflating the two produces output that *looks* sanitized --
-the marker is gone, the value is still on the page -- which is the worst possible
-failure mode for a public artifact.
-"""
-
 from __future__ import annotations
 
 from contoso_foundry import patterns
@@ -34,7 +26,6 @@ class TestSecretRedaction:
         assert "Sup3rSecretValue123" not in out
 
     def test_every_secret_rule_that_matches_also_redacts(self):
-        """No rule may detect a value it cannot remove."""
         samples = {
             "storage-connection-string": "AccountKey=QUJDREVGR0hJSktMTU5PUFFSU1Q9PQ==",
             "servicebus-connection-string": "SharedAccessKey=QUJDREVGR0hJSktMTU5P",

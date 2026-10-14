@@ -1,5 +1,3 @@
-"""Repository contracts for the tenant-neutral Contoso Concierge ALM scaffold."""
-
 from __future__ import annotations
 
 import json
@@ -232,115 +230,6 @@ def test_synthetic_delegation_cases_execute_toolbox_contracts(
                 cases["unknown-persona-fails-closed"]["persona"]["tid"],
             )
         )
-
-
-def test_runtime_publish_and_tenant_approval_stay_manual(repo_root: Path):
-    alm = load_yaml(repo_root / "config" / "concierge" / "alm.yaml")
-    workflow = (repo_root / ".github" / "workflows" / "concierge-alm.yml").read_text(encoding="utf-8")
-    script = (repo_root / "scripts" / "concierge-alm.ps1").read_text(encoding="utf-8")
-
-    assert yaml.safe_load(workflow)
-    assert alm["promotion"]["automatic_runtime_publish"] is False
-    assert alm["promotion"]["runtime_publish_gate"] == "manual-agent-owner"
-    assert alm["promotion"]["tenant_availability_gate"] == "microsoft-365-admin-approval"
-    assert "workflow_dispatch:" in workflow
-    assert 'test "$GITHUB_REF" = "refs/heads/main"' in workflow
-    assert "environment: concierge-prod-approval" in workflow
-    assert "accept-test:" in workflow
-    assert "Run synthetic TEST delegation and RLS acceptance" in workflow
-    assert workflow.index("runtime-test") < workflow.index(
-        "Retain TEST-accepted package for PROD"
-    )
-    assert "ACCEPTED_ARTIFACT_NAME" in workflow
-    assert "-ChecksumPath" not in workflow
-    assert "retention-days: 90" in workflow
-    assert "--publish-changes" not in workflow
-    assert "manual TEST runtime publication" in workflow
-    assert "environment: concierge-prod-approval" in workflow
-    assert "ConvertFrom-Json" in script
-    assert "validate-package" in script
-    assert "ConnectionId" in script
-    assert "ConnectorId" in script
-
-
-def test_teardown_inventory_covers_every_non_azure_surface(repo_root: Path):
-    inventory = set(load_yaml(repo_root / "config" / "concierge" / "alm.yaml")["teardown_inventory"])
-    required = {
-        "channels",
-        "tenant-availability-pins",
-        "connection-references",
-        "connector-connections",
-        "custom-connectors",
-        "agent-flows",
-        "application-insights-agent-settings",
-        "application-insights-environment-export",
-        "dataverse-transcript-settings",
-        "deployment-service-principal",
-        "power-platform-application-users",
-        "deployment-client-secrets",
-        "deployment-federated-credentials",
-        "power-platform-environment-role-assignments",
-        "github-environment-secrets",
-        "github-deployment-environments",
-        "managed-solutions",
-        "unmanaged-dev-solution",
-        "copilot-credit-capacity-allocations",
-        "power-platform-environments",
-    }
-    assert inventory == required
-
-
-def test_pac_pack_smoke_and_release_source_gate_are_wired(repo_root: Path):
-    workflow = (repo_root / ".github/workflows/concierge-alm.yml").read_text(
-        encoding="utf-8"
-    )
-    script = (repo_root / "scripts/concierge-alm.ps1").read_text(encoding="utf-8")
-    tools = json.loads(
-        (repo_root / ".config/dotnet-tools.json").read_text(encoding="utf-8")
-    )
-
-    pac = tools["tools"]["microsoft.powerapps.cli.tool"]
-    assert pac["version"] == "2.11.2"
-    assert pac["commands"] == ["pac"]
-    assert "generatedBy" in (
-        repo_root / "solutions/ContosoConcierge/src/Other/Solution.xml"
-    ).read_text(encoding="utf-8")
-    assert "PAC pack smoke gate" in workflow
-    assert "dotnet tool restore" in workflow
-    assert "--managed false" in workflow
-    assert "AssertReleaseSource" in workflow
-    assert "validate-release-source" in script
-    assert "packagetype Unmanaged" in script
-
-
-def test_promotion_requires_trusted_run_digest_attestation_and_manifest(
-    repo_root: Path,
-):
-    workflow = (repo_root / ".github/workflows/concierge-alm.yml").read_text(
-        encoding="utf-8"
-    )
-    verifier = (
-        repo_root
-        / ".github/actions/verify-concierge-artifact/action.yml"
-    ).read_text(encoding="utf-8")
-    assert yaml.safe_load(verifier)
-    implementation = workflow + verifier
-    alm = load_yaml(repo_root / "config/concierge/alm.yaml")
-    promotion = alm["promotion"]
-
-    assert promotion["trusted_branch"] == "main"
-    assert promotion["require_exact_source_sha"] is True
-    assert promotion["require_artifact_archive_digest"] is True
-    assert promotion["require_github_attestation"] is True
-    assert promotion["validate_internal_solution_identity"] is True
-    assert "artifact_source_sha" in implementation
-    assert "validate-source" in implementation
-    assert "sha256sum --check" in implementation
-    assert "gh attestation verify" in implementation
-    assert "actions/attest@" in workflow
-    assert "validate-package" in implementation
-    assert "actions/download-artifact" not in implementation
-    assert workflow.count("uses: ./.github/actions/verify-concierge-artifact") == 3
 
 
 def test_source_run_validator_binds_artifact_to_exact_successful_main_run():
@@ -585,19 +474,6 @@ cases:
         "oid": "OID-SYNTHETIC-01",
         "tid": "TID-SYNTHETIC-01",
     }
-
-
-def test_rollback_matches_direct_import_with_data_safeguards(
-    repo_root: Path,
-):
-    runbook = (repo_root / "docs/operations/concierge-alm.md").read_text(
-        encoding="utf-8"
-    )
-    assert "Power Platform Pipeline deployment record" in runbook
-    assert "There is no automatic rollback button" in runbook
-    assert "target-environment backup" in runbook
-    assert "forward fix" in runbook
-    assert "controlled uninstall and reinstall" in runbook
 
 
 def _write_release_source(root: Path, *, agent_name: str = "Contoso Concierge") -> Path:

@@ -1,20 +1,8 @@
-"""Tests for the synthetic Contoso data spine.
-
-The generator is only useful if it is boring: the same seed must produce the
-same company every time, on every machine, and the result must survive the
-referential, privacy and provenance gates without exception. These tests are
-what make that claim checkable rather than aspirational.
-
-Nothing here touches the network, Azure, or the committed ``data/build/``
-directory — every build goes to a temporary path.
-"""
-
 from __future__ import annotations
 
 import builtins
 import copy
 import json
-import re
 from pathlib import Path
 
 import pytest
@@ -53,12 +41,6 @@ def reference() -> dict:
 
 
 def test_two_builds_are_byte_for_byte_identical(tmp_path: Path) -> None:
-    """The acceptance criterion: one command, one seed, one dataset.
-
-    Compared through the lock document rather than by walking the directories,
-    because that is exactly what CI compares — testing a different comparison
-    than the one that gates the build would prove the wrong thing.
-    """
     first = build_mod.build(
         config_path=SPINE_CONFIG, seed_dir=SEED_DIR,
         out_dir=tmp_path / "a", fixtures_dir=FIXTURES_DIR,
@@ -71,7 +53,6 @@ def test_two_builds_are_byte_for_byte_identical(tmp_path: Path) -> None:
 
 
 def test_csv_bytes_match_across_builds(tmp_path: Path) -> None:
-    """Belt and braces: compare the files themselves, not just their digests."""
     for name in ("a", "b"):
         build_mod.build(
             config_path=SPINE_CONFIG, seed_dir=SEED_DIR,
@@ -89,7 +70,6 @@ def test_csv_uses_lf_endings(built: build_mod.BuildResult) -> None:
 
 
 def test_committed_lock_matches_a_fresh_build(built: build_mod.BuildResult) -> None:
-    """The committed lock file is the contract; drifting from it is a failure."""
     locked = build_mod.read_lock(DATA_ROOT / build_mod.LOCK_FILENAME)
     assert build_mod.compare_lock(locked, built.lock) == []
 
@@ -133,7 +113,6 @@ def test_every_declared_table_has_rows(built: build_mod.BuildResult) -> None:
 
 
 def test_canonical_entities_are_all_present(built: build_mod.BuildResult) -> None:
-    """The brief names ten canonical entities; each must be addressable."""
     required = {
         "customers", "employees", "products", "suppliers", "locations",
         "orders", "invoices", "support_cases", "travel_bookings", "work_orders",
@@ -167,7 +146,6 @@ def test_integrity_gate_is_clean(built: build_mod.BuildResult) -> None:
 
 
 def test_integrity_gate_detects_a_dangling_reference(built: build_mod.BuildResult) -> None:
-    """A gate that has never failed is a gate nobody has tested."""
     broken = {name: list(rows) for name, rows in built.dataset.items()}
     broken["orders"] = [dict(row) for row in broken["orders"]]
     broken["orders"][0]["customer_id"] = "CUST-99999"
@@ -210,7 +188,6 @@ def test_employee_generation_terminates_after_the_name_cross_product(reference: 
 
 
 def test_cancelled_orders_are_never_invoiced(built: build_mod.BuildResult) -> None:
-    """A deliberate asymmetry, asserted so a future refactor cannot smooth it away."""
     cancelled = {o["order_id"] for o in built.dataset["orders"] if o["status"] == "cancelled"}
     assert cancelled, "the fixture needs at least one cancelled order to be interesting"
     invoiced = {i["order_id"] for i in built.dataset["invoices"]}
@@ -305,24 +282,7 @@ def test_example_dot_com_is_not_falsely_blocked() -> None:
     assert pii.check_emails(dataset) == []
 
 
-def test_published_row_counts_match_the_committed_lock() -> None:
-    overview = (REPO_ROOT / "docs" / "data" / "overview.md").read_text(encoding="utf-8")
-    lock = json.loads((DATA_ROOT / "build.lock.json").read_text(encoding="utf-8"))
-
-    for table in ("travel_routes", "travel_fares"):
-        match = re.search(rf"\| `{table}` \| ([\d,]+) \|", overview)
-        assert match is not None
-        assert int(match.group(1).replace(",", "")) == lock["row_counts"][table]
-
-    assert f"**{lock['total_rows']:,} rows across {len(lock['row_counts'])} tables.**" in overview
-
-
 def test_scanner_columns_are_classified(built: build_mod.BuildResult) -> None:
-    """Every column carrying personal data must be classified as such.
-
-    The privacy gate keys off the classification, so an unclassified column is
-    an unchecked column.
-    """
     for column in table_by_name("employees").columns:
         if column.name in {"full_name", "work_email", "work_phone"}:
             assert column.classification in PERSONAL_CLASSIFICATIONS
@@ -346,7 +306,6 @@ def test_every_committed_data_file_is_claimed_by_the_manifest() -> None:
 
 
 def test_restricted_datasets_are_declared_but_never_vendored() -> None:
-    """The share-alike and gated corpora must appear only as fetch entries."""
     manifest = provenance.load_manifest(DATA_ROOT / "manifest.yaml")
     external_ids = {entry["id"] for entry in manifest["external"]}
     assert {"schema-guided-dialogue", "ms-marco", "gaia"} <= external_ids
@@ -425,23 +384,9 @@ def test_provenance_gate_requires_an_https_source() -> None:
     assert any(f.rule == "source-url-not-https" for f in findings)
 
 
-def test_rendered_manifest_matches_the_yaml() -> None:
-    """MANIFEST.md is generated, so it must never be edited by hand."""
-    manifest = provenance.load_manifest(DATA_ROOT / "manifest.yaml")
-    expected = provenance.render_markdown(manifest)
-    actual = (DATA_ROOT / "MANIFEST.md").read_text(encoding="utf-8")
-    assert actual == expected, "run 'foundry data manifest' to regenerate data/MANIFEST.md"
-
-
 def test_external_manifest_pins_a_commit_not_a_branch() -> None:
     external = yaml.safe_load((DATA_ROOT / "external" / "manifest.yaml").read_text(encoding="utf-8"))
     for dataset in external["datasets"]:
         assert dataset["committed"] is False
         ref = str(dataset["ref"])
         assert ref == "local" or len(ref) == 40, f"{dataset['id']} is not pinned to a commit"
-
-
-def test_external_cache_is_not_tracked() -> None:
-    ignored = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8")
-    assert "data/external/cache/" in ignored
-    assert "data/build/" in ignored

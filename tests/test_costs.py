@@ -1,11 +1,3 @@
-"""The budget gate.
-
-The subtle failures a cost model can have are all here: an ambiguous meter that
-silently resolves to the wrong price, tier minimums compared in the wrong unit, a
-unit-of-measure change that moves the answer by a factor of a thousand, and a
-component with no meter being recorded as free.
-"""
-
 from __future__ import annotations
 
 import json
@@ -60,7 +52,6 @@ class TestUnitMultiplier:
             costs.unit_multiplier("per widget")
 
     def test_rejects_a_zero_unit(self):
-        """Dividing by this would produce infinity and pass any budget check."""
         with pytest.raises(costs.CostModelError):
             costs.unit_multiplier("0 Hour")
 
@@ -196,8 +187,6 @@ class TestEvaluate:
         assert not report.within_budget
 
     def test_detects_unit_of_measure_drift(self):
-        """If Microsoft re-denominates a meter, fail loudly rather than silently
-        changing the answer by a factor of a thousand."""
         estimate = {
             "monthly_budget_usd": 500,
             "line_items": [self.azure_line(expect_unit_of_measure="10K")],
@@ -229,8 +218,6 @@ class TestEvaluate:
         assert any("no published retail meter" in w for w in report.warnings)
 
     def test_external_billing_is_excluded_from_the_azure_ceiling(self):
-        """Copilot Studio bills in Copilot Credits, not Azure meters. Counting it
-        against the Azure ceiling would make the gate wrong in both directions."""
         estimate = {
             "monthly_budget_usd": 100,
             "line_items": [
@@ -302,7 +289,6 @@ class TestEvaluate:
 
 
 class TestShippedEstimate:
-    """The committed estimate must stay structurally valid without pricing it."""
 
     @pytest.fixture(scope="class")
     def estimate(self, repo_root):
@@ -330,7 +316,6 @@ class TestShippedEstimate:
             assert has_meter or reserved, f"{item['id']} is neither priceable nor reserved"
 
     def test_copilot_studio_is_billed_externally(self, estimate):
-        """Gate 7: non-Azure capacity is verified separately from the Azure ceiling."""
         studio = [i for i in estimate["line_items"] if "copilot-studio" in i["id"]]
         assert studio, "the estimate must account for Copilot Studio capacity"
         assert all(i["billing"] == "external" for i in studio)
@@ -421,11 +406,6 @@ class _AlwaysThrottled:
 
 
 class TestRetryExhaustion:
-    """The budget gate must fail loudly when pricing is unavailable.
-
-    A hang is worse than a failure here: CI reads it as flakiness, and the
-    ceiling silently stops being enforced for that run.
-    """
 
     def test_gives_up_and_raises_rather_than_retrying_forever(self):
         session = _AlwaysThrottled()
@@ -483,7 +463,6 @@ class _Response:
 
 
 class TestCacheIsOfflineOnly:
-    """A cached price presented as a live price is a silent staleness bug."""
 
     def _cache(self, tmp_path):
         path = tmp_path / "price-cache.json"
@@ -519,7 +498,6 @@ class TestCacheIsOfflineOnly:
 
 
 class TestBillingValidation:
-    """An unrecognised billing tag must not route spend around the ceiling."""
 
     def test_a_typo_is_rejected_rather_than_treated_as_external(self):
         estimate = {
