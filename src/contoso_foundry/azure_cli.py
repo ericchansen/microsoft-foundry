@@ -12,8 +12,7 @@ import shutil
 import subprocess
 from typing import Any
 
-#: Verbs that mutate Azure. Any command using one must pass ``allow_write=True``,
-#: which the ownership-boundary check gates on.
+#: Mutating verbs require explicit ``allow_write=True``.
 _WRITE_VERBS = frozenset({"create", "delete", "update", "set", "add", "remove", "purge"})
 _WRITE_REST_METHODS = frozenset({"delete", "patch", "post", "put"})
 

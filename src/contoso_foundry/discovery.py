@@ -178,7 +178,7 @@ def render_internal_markdown(d: Discovery) -> str:
     ]
     target = d.target_resource_group.get("name")
     for g in d.resource_groups or []:
-        status = "TARGET" if g["name"] == target else "PROTECTED — read-only"
+        status = "TARGET" if g["name"] == target else "OUTSIDE DEPLOYMENT"
         lines.append(f"| `{g['name']}` | `{g['location']}` | {status} |")
     if d.resource_groups is None:
         lines.append("| _not readable — `az group list` failed_ | | |")
@@ -221,7 +221,7 @@ def render_public_markdown(d: Discovery) -> str:
         boundary_lines = [
             f"- The subscription contains **{len(d.resource_groups)} resource group(s)**, "
             f"of which **{outside}** are outside the "
-            "ownership boundary and are therefore read-only for this project.",
+            "platform deployment.",
             f"- Target resource group `{target.get('name')}`: "
             + (
                 "**already exists**"

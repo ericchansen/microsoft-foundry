@@ -1,13 +1,4 @@
-"""Ownership-boundary enforcement.
-
-One rule: **everything this project creates, assigns, or deletes lives inside a
-single resource group.** Everything else in the subscription is somebody else's
-and is read-only.
-
-This module is the gate that runs *before* the first provisioning step. It
-checks the declared plan statically (no network needed) and then, if the CLI is
-available, confirms the live subscription still matches what the plan assumes.
-"""
+"""Validate the platform deployment manifest before provisioning."""
 
 from __future__ import annotations
 
@@ -700,11 +691,7 @@ def check_live(
     enabled_modules: Iterable[str] | None = None,
     allow_missing_declared: bool = False,
 ) -> BoundaryReport:
-    """Confirm the live subscription matches the plan's assumptions.
-
-    Read-only. Records the resource groups the project must never touch, so the
-    protected set is captured as evidence rather than assumed.
-    """
+    """Read-only comparison of live state with the deployment manifest."""
     plan = _active_plan(plan, enabled_modules)
     try:
         groups = azure_cli.run(["group", "list"]) or []
@@ -948,7 +935,7 @@ def render_markdown(report: BoundaryReport) -> str:
         "# Ownership boundary check",
         "",
         f"Generated: `{report.generated_at}`  ",
-        f"Boundary: **`{report.resource_group}`** — the only resource group this project may mutate.  ",
+        f"Deployment target: **`{report.resource_group}`**  ",
         f"Result: **{verdict}**",
         "",
         "## Checks run",
@@ -968,7 +955,7 @@ def render_markdown(report: BoundaryReport) -> str:
             "## Live subscription state",
             "",
             f"- Target resource group exists: **{report.target_exists}**",
-            f"- Resource groups outside the boundary (read-only, never modified): "
+            f"- Resource groups outside this deployment: "
             f"**{len(report.protected_resource_groups)}**",
         ]
     return "\n".join(lines) + "\n"

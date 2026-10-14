@@ -531,7 +531,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--report", default=str(DEFAULT_REPORTS / "cost-report.md"))
     p.set_defaults(func=cmd_costs)
 
-    p = sub.add_parser("boundary", help="validate that everything mutable stays in one resource group")
+    p = sub.add_parser("boundary", help="validate the platform deployment manifest")
     p.add_argument("--no-live", action="store_true", help="static checks only")
     p.add_argument(
         "--deployment-readiness",

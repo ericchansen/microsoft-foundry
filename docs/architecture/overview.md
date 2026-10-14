@@ -30,8 +30,8 @@ creating a second data plane or bypassing the platform's security boundaries.
 5. **Keep cost observable, attributable, and configurable.** Shared, fixed, and
    variable consumption is metered separately. Environment-specific limits are
    policy-as-code rather than permanent properties of the architecture.
-6. **Constrain the Azure blast radius.** Mutable Azure resources belong to one
-   declared resource group. Resources outside that boundary are read-only.
+6. **Declare deployment scope.** Platform resources are listed in
+   `config/boundary.yaml`.
 
 ## Core request, data, and telemetry flows
 
@@ -212,8 +212,7 @@ flowchart TB
 The tenant, Power Platform environment, and Azure resource group are separate
 administrative boundaries. Connections crossing them require explicit identity,
 least-privilege authorization, and an auditable contract. The Azure ownership
-boundary forbids mutation outside the project resource group and prevents
-diagnostics from being written to workspaces the project does not own.
+boundary validates the platform deployment manifest.
 
 ## Core and optional modules
 
