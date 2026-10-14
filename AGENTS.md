@@ -1,15 +1,6 @@
 # Repository conventions
 
-Conventions for anyone working in this repository, human or AI. They exist
-because this is a **public** repository operating against a **live shared Azure
-subscription**, which makes two ordinary mistakes expensive: leaking an
-identifier, and touching someone else's resources.
-
----
-
-## The two rules that are not negotiable
-
-### 1. Never commit a real identifier
+## Private data
 
 Never place any of the following in a tracked file:
 
@@ -27,23 +18,6 @@ If evidence genuinely requires an identifier, it goes in `internal/`, which is
 gitignored and outside the docs tree. Publish a sanitized summary instead.
 
 Run `foundry scan site` before pushing anything that changes `docs/`.
-
-### 2. Everything mutable lives in one resource group
-
-The only resource group this project may create, change or delete is the one
-named in `config/boundary.yaml`. Every other resource group, identity, App
-Insights instance, agent, endpoint and role assignment in the subscription
-belongs to someone else and is **read-only**.
-
-Do not reuse an existing identity. Do not scope a role assignment above the
-resource group. Do not write diagnostics into a workspace this project does not
-own.
-
-`azure_cli.run()` refuses mutating verbs unless a caller passes `allow_write=True`
-explicitly, and `ensure_resource_group()` raises unless the boundary report is
-clean. Do not work around either.
-
----
 
 ## Evidence over assertion
 
@@ -65,8 +39,6 @@ When Microsoft publishes a capability only as a documentation table, record it i
 `config/capability-matrix.yaml` with a `source` URL and an `as_of` date. When it
 has an API, query the API and delete the matrix entry.
 
----
-
 ## Layout
 
 | Path | Purpose | Published | Committed |
@@ -82,8 +54,6 @@ has an API, query the API and delete the matrix entry.
 
 Generated output is never committed. A committed report can only ever be stale,
 and a stale cost report is worse than no cost report.
-
----
 
 ## Code
 
@@ -103,8 +73,6 @@ ruff check .
 pytest
 ```
 
----
-
 ## Documentation
 
 `docs/` is the public site. Write for a reader who has not seen the repository.
@@ -115,8 +83,6 @@ pytest
 - The site is explanatory only. It deep-links to authenticated experiences; it
   never calls an agent and holds no credentials.
 - `mkdocs build --strict` must pass — a broken internal link fails the build.
-
----
 
 ## Commits and pull requests
 

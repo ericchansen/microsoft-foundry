@@ -85,10 +85,10 @@ tracked separately and does not consume the Azure ceiling.
 
 → [Cost model](https://ericchansen.github.io/microsoft-foundry/platform/costs/)
 
-### What it may touch
+### Platform deployment scope
 
-Everything this project creates lives in **one resource group**. `foundry
-boundary` asserts that every planned resource, identity, role assignment,
+The platform deployment lives in **one resource group**. `foundry
+boundary` checks that every planned resource, identity, role assignment,
 diagnostic setting and teardown target is scoped inside it, and refuses to
 provision if not. Scopes are relative by design, so they cannot name another
 subscription or resource group.

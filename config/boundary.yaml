@@ -1,10 +1,4 @@
-# Ownership boundary — the single blast radius for this project.
-#
-# THE RULE
-#   Everything this project creates, assigns or deletes lives inside ONE resource
-#   group. Every other resource group, identity, App Insights instance, agent,
-#   endpoint and role assignment in the subscription belongs to somebody else and
-#   is read-only.
+# Platform deployment inventory.
 #
 # `foundry boundary` validates this file before anything is provisioned, and
 # refuses to create the resource group if any check fails.
