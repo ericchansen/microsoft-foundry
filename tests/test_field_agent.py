@@ -1,5 +1,3 @@
-"""Synthetic and golden tests for the Contoso Field external agent."""
-
 from __future__ import annotations
 
 import asyncio

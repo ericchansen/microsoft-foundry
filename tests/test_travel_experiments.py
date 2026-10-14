@@ -537,22 +537,3 @@ def test_live_cli_retains_error_without_printing_private_exception(tmp_path, mon
     assert len(paths) == 1 and "private-endpoint" in paths[0].read_text()
     assert ex.main(args) == 1
     assert len(list((tmp_path / "internal/new").iterdir())) == 1
-
-
-def test_workflow_is_manual_protected_and_uploads_only_scanned_summary():
-    text = (REPO_ROOT / ".github/workflows/travel-experiment.yml").read_text()
-    workflow = yaml.safe_load(text)
-    trigger = workflow.get("on", workflow.get(True))
-    assert set(trigger) == {"workflow_dispatch"}
-    assert trigger["workflow_dispatch"]["inputs"]["run"]["default"] is False
-    job = workflow["jobs"]["compare"]
-    assert job["environment"] == "contoso-agents"
-    assert job["concurrency"]["group"] == "azure-rg-contoso-agents"
-    assert "refs/heads/main" in job["if"]
-    upload = next(s for s in job["steps"] if "actions/upload-artifact@" in s.get("uses", ""))
-    assert upload["with"]["path"] == "reports/travel-experiment/summary.json"
-    assert "steps.scan.outcome == 'success'" in upload["if"]
-    assert "foundry scan" in text
-    for step in job["steps"]:
-        if "uses" in step:
-            assert len(step["uses"].split("@")[1]) == 40

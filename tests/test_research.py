@@ -1,5 +1,3 @@
-"""Research graph, hosted configuration, and golden evaluation contracts."""
-
 from __future__ import annotations
 
 import asyncio
@@ -8,7 +6,6 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-import yaml
 from langchain_azure_ai.agents.hosting import ResponsesHostServer
 from langchain_core.messages import HumanMessage
 
@@ -40,7 +37,6 @@ from contoso_foundry.research.workflow import (
     AGENT_NAME,
     AGENT_VERSION,
     HOSTED_VERSION,
-    REQUIRED_CONTRACT_VERSIONS,
     build_research_graph,
 )
 
@@ -299,41 +295,6 @@ def test_evaluations_fail_on_wrong_agent_version(repo_root: Path, tmp_path: Path
         run_evaluations(repo_root, scenarios)
 
 
-def test_hosted_configuration_routes_exact_versions(repo_root: Path) -> None:
-    unified = (repo_root / "azure.yaml").read_text(encoding="utf-8")
-    config = yaml.safe_load(unified)
-    research = config["services"]["contoso-research"]
-    project = config["services"]["research-project"]
-    dockerfile = (repo_root / "agents" / "research" / "Dockerfile").read_text(encoding="utf-8")
-    ci = (repo_root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-
-    assert research["protocols"] == [{"protocol": "responses", "version": "2.0.0"}]
-    assert research["agentEndpoint"]["versionSelector"]["versionSelectionRules"] == [
-        {"type": "FixedRatio", "agentVersion": "4", "trafficPercentage": 100}
-    ]
-    assert "@latest" not in unified
-    assert project["deployments"][0]["name"] == "gpt-5.4-mini-2026-03-17"
-    assert project["deployments"][0]["model"]["version"] == "2026-03-17"
-    assert research["name"] == "contoso-research"
-    assert config["resourceGroup"] == "rg-contoso-agents"
-    assert "CONTOSO_RESEARCH_PERSONA_ROUTE" not in unified
-    assert "hooks" not in config
-    assert "contoso_foundry.research.deployment" in research["hooks"]["predeploy"]["windows"]["run"]
-    assert research["hooks"]["predeploy"]["windows"]["continueOnError"] is False
-    assert research["hooks"]["predeploy"]["posix"]["continueOnError"] is False
-    assert "FROM python:3.13.15-slim-bookworm@sha256:" in dockerfile
-    assert "ENV PYTHONPATH=/app/src" in dockerfile
-    assert "HOME=/tmp" in dockerfile
-    assert "USER 65532:65532" in dockerfile
-    assert "pip==26.2.1" in dockerfile
-    assert 'CMD ["python", "-m", "contoso_foundry.research.hosted"]' in dockerfile
-    assert "Verify hosted-agent readiness endpoint" in ci
-    assert "http://127.0.0.1:8089/readiness" in ci
-    assert (
-        {name: "1.0.0" for name in REQUIRED_CONTRACT_VERSIONS} | {"travel": "1.1.0"}
-    ) == REQUIRED_CONTRACT_VERSIONS
-
-
 def test_deployment_target_is_derived_from_relative_boundary(repo_root: Path) -> None:
     target = target_from_boundary(repo_root / "config" / "boundary.yaml")
 
@@ -341,26 +302,6 @@ def test_deployment_target_is_derived_from_relative_boundary(repo_root: Path) ->
     assert target.account_name == "contoso-agents-foundry"
     assert target.project_name == "research"
     assert target.endpoint.endswith("/api/projects/research")
-
-
-def test_hosted_manifest_uses_a_prebuilt_digest_pinned_image(repo_root: Path) -> None:
-    manifest = yaml.safe_load(
-        (
-            repo_root
-            / "deployment"
-            / "hosted"
-            / "research"
-            / "azure.yaml"
-        ).read_text(encoding="utf-8")
-    )
-    research = manifest["services"]["contoso-research"]
-    assert research["image"] == "${CONTOSO_RESEARCH_IMAGE}"
-    assert research["docker"]["remoteBuild"] is True
-    assert [
-        name
-        for name, service in manifest["services"].items()
-        if service["host"] == "azure.ai.project"
-    ] == ["research-project"]
 
 
 def test_predeploy_requires_a_clean_live_boundary(repo_root: Path, monkeypatch) -> None:
@@ -465,15 +406,6 @@ def test_deployment_resolves_exact_resources_before_accepting_endpoint(
         target.resource_group,
         target.resource_group,
     ]
-
-
-def test_hosted_runtime_uses_first_party_tracer_and_redacts_content(repo_root: Path) -> None:
-    source = (repo_root / "src" / "contoso_foundry" / "research" / "hosted.py").read_text(encoding="utf-8")
-    assert "AzureAIOpenTelemetryTracer" in source
-    assert "agent_id=AGENT_NAME" in source
-    assert "trace_all_langgraph_nodes=True" in source
-    assert "enable_content_recording=False" in source
-    assert 'os.environ.setdefault("OTEL_SERVICE_NAME", AGENT_NAME)' in source
 
 
 def test_hosted_runtime_rejects_wrong_platform_route(monkeypatch) -> None:

@@ -1,11 +1,3 @@
-"""The publishing gate.
-
-These tests encode what must never reach a public site. A regression here is a
-disclosure, so each rule is asserted positively (it catches the bad thing) and
-negatively (it does not flag the legitimate thing), because a scanner everybody
-disables for false positives protects nothing.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -47,10 +39,6 @@ class TestIdentifierRules:
         assert "app-secret" in matched
 
     def test_allows_documentation_placeholder_guids(self):
-        """The all-zero and all-f GUIDs are Microsoft's own doc placeholders.
-
-        Flagging them makes it impossible to document an API response shape.
-        """
         for placeholder in ("00000000-0000-0000-0000-000000000000",
                             "ffffffff-ffff-ffff-ffff-ffffffffffff"):
             assert scan.scan_text(f"id: {placeholder}") == []
@@ -74,7 +62,6 @@ class TestSecretRules:
         assert scan.scan_text(text), f"expected a finding for {text!r}"
 
     def test_findings_never_carry_matched_text(self):
-        """A scanner that prints the secret into a public build log has leaked it."""
         secret = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWX=="
         findings = scan.scan_text(f"AccountKey={secret}")
         assert findings
@@ -123,7 +110,6 @@ class TestScanPath:
         assert not result.ok
 
     def test_scans_asset_bundles(self, tmp_path: Path):
-        """Assets are published bytes too, so the gate reads them like any page."""
         assets = tmp_path / "assets" / "javascripts"
         assets.mkdir(parents=True)
         (assets / "bundle.js").write_text(REAL_LOOKING_GUID, encoding="utf-8")
@@ -134,7 +120,6 @@ class TestScanPath:
         assert not result.ok
 
     def test_skips_only_vendored_third_party_libraries(self, tmp_path: Path):
-        """The narrow exclusion is narrow: our own assets are still scanned."""
         vendored = tmp_path / "assets" / "javascripts" / "lunr"
         vendored.mkdir(parents=True)
         (vendored / "tinyseg.js").write_text(REAL_LOOKING_GUID, encoding="utf-8")
@@ -147,12 +132,6 @@ class TestScanPath:
         assert [f.path.name for f in result.findings] == ["extra.js"]
 
     def test_scans_a_directory_named_internal_inside_the_site(self, tmp_path: Path):
-        """`internal` must not be a skip-list entry when walking build output.
-
-        The name earns trust in the *source* tree because it is gitignored. In
-        `site/` it earns nothing — anything there is about to be published, so
-        skipping it would create a silent hole in the publishing gate.
-        """
         nested = tmp_path / "internal"
         nested.mkdir()
         (nested / "leak.html").write_text(REAL_LOOKING_GUID, encoding="utf-8")
@@ -164,7 +143,6 @@ class TestScanPath:
 
 
 class TestInternalExclusion:
-    """Gate 6: identifier-bearing evidence must be structurally unpublishable."""
 
     def test_the_real_repository_excludes_internal(self, repo_root: Path):
         assert scan.check_internal_is_excluded(repo_root) == []

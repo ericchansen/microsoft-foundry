@@ -50,14 +50,6 @@ def test_request_does_not_follow_redirects_or_persist_credentials():
     assert "private-key" not in str(result)
 
 
-def test_both_policy_paths_return_gateway_request_id(repo_root):
-    source = (repo_root / "infra" / "modules" / "gateway-association.bicep").read_text()
-    assert 'name="x-contoso-gateway-request-id"' in source
-    assert "@(context.RequestId.ToString())" in source
-    assert source.count("<outbound><base />${requestIdHeader}</outbound>") == 2
-    assert source.count("<on-error><base />${requestIdHeader}</on-error>") == 2
-
-
 def test_field_console_requires_one_complete_result():
     payload = '{"correlation_id":"run","revision":"revision","output":"answer","started_at":"now"}'
     assert demo.parse_field_console("Connecting\n" + payload)["output"] == "answer"

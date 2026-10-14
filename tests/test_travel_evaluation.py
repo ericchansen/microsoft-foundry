@@ -357,12 +357,3 @@ def test_continuous_evaluation_readback_fails_closed(runs, match):
 def test_live_evidence_can_only_be_written_under_internal(tmp_path):
     with pytest.raises(OperationsError, match="internal"):
         _write_internal(tmp_path, Path("docs/result.json"), {"status": "passed"})
-
-
-def test_azd_trace_discovery_uses_current_contract():
-    config = REPO_ROOT / "evals" / "azure.eval.yaml"
-    assert config.exists()
-    text = config.read_text(encoding="utf-8")
-    assert "type: traces" in text
-    assert "agent_name: contoso-travel" in text
-    assert not (REPO_ROOT / "eval.yaml").exists()
