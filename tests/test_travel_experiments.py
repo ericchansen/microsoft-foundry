@@ -421,17 +421,24 @@ def test_api_error_propagates_no_success_fallback(tmp_path):
     client.evals.runs.create.assert_not_called()
 
 
-def test_poll_deadline_is_bounded(tmp_path):
+def test_poll_deadline_is_bounded(tmp_path, monkeypatch):
+    clock = SimpleNamespace(now=0.0)
+
+    def advance(seconds):
+        clock.now += seconds
+
+    monkeypatch.setattr(ex, "time", SimpleNamespace(monotonic=lambda: clock.now, sleep=advance))
     client = eval_client()
     client.evals.runs.create.side_effect = [
         {"id": side, "status": "queued"} for side in ex.SIDES
     ]
     client.evals.runs.retrieve.return_value = {"id": "baseline", "status": "queued"}
-    with pytest.raises(ex.ExperimentError, match="deadline"):
+    with pytest.raises(ex.ExperimentError):
         ex.evaluate_pair(client, {s: [sample()] for s in ex.SIDES}, targets(), "judge",
                          {"experiment": "unique"}, ex.Evidence(tmp_path, Path("internal/one")),
-                         time.monotonic() + 0.01, 5, poll_seconds=0.01)
+                         3, 5, poll_seconds=1)
     assert client.evals.runs.create.call_count == 2
+    assert clock.now == 3
 
 
 def test_missing_usage_is_not_zero_and_partial_totals_are_observed_only():
