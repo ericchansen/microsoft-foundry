@@ -97,7 +97,7 @@ jobs:
           output-file: /tmp/contoso-travel.spdx.json
 
   deploy:
-    if: github.event_name == 'workflow_dispatch' && inputs.deploy
+    if: vars.CONTOSO_DEPLOYMENTS_ENABLED == 'true' && github.event_name == 'workflow_dispatch' && inputs.deploy
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 45

@@ -35,7 +35,7 @@ permissions:
 
 jobs:
   compare:
-    if: github.ref == 'refs/heads/main' && inputs.run
+    if: vars.CONTOSO_DEPLOYMENTS_ENABLED == 'true' && github.ref == 'refs/heads/main' && inputs.run
     runs-on: ubuntu-latest
     timeout-minutes: 35
     environment: contoso-agents
