@@ -425,3 +425,35 @@ def test_hosted_runtime_accepts_exact_platform_route(monkeypatch) -> None:
     monkeypatch.setenv("CONTOSO_RESEARCH_HOSTED_VERSION", HOSTED_VERSION)
     monkeypatch.setenv("FOUNDRY_AGENT_VERSION", HOSTED_VERSION)
     _verify_hosted_route()
+
+
+def test_hosted_startup_disables_content_recording(monkeypatch) -> None:
+    from unittest.mock import Mock
+
+    from contoso_foundry.research import hosted
+
+    for name, value in {
+        "FOUNDRY_AGENT_NAME": AGENT_NAME,
+        "CONTOSO_RESEARCH_HOSTED_VERSION": HOSTED_VERSION,
+        "FOUNDRY_AGENT_VERSION": HOSTED_VERSION,
+        "OTEL_SERVICE_NAME": AGENT_NAME,
+        "FOUNDRY_PROJECT_ENDPOINT": "https://unit.test/api/projects/research",
+        "AZURE_AI_MODEL_DEPLOYMENT_NAME": "test-model",
+        "CONTOSO_RESEARCH_CALLER_ROUTE": "americas-supply-planner",
+    }.items():
+        monkeypatch.setenv(name, value)
+    for name in (
+        "runtime_from_environment", "DefaultAzureCredential", "_build_model",
+        "model_synthesizer", "ResearchResponsesHostServer",
+    ):
+        monkeypatch.setattr(hosted, name, Mock())
+    monkeypatch.setattr(hosted.atexit, "register", Mock())
+    tracer = Mock()
+    graph = Mock()
+    monkeypatch.setattr(hosted, "AzureAIOpenTelemetryTracer", tracer)
+    monkeypatch.setattr(hosted, "build_research_graph", Mock(return_value=graph))
+
+    hosted.main()
+
+    assert tracer.call_args.kwargs["enable_content_recording"] is False
+    assert graph.with_config.call_args.args[0]["callbacks"] == [tracer.return_value]
