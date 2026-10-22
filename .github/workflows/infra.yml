@@ -82,7 +82,7 @@ jobs:
 
   azure:
     name: ${{ inputs.operation }} protected environment
-    if: github.event_name == 'workflow_dispatch'
+    if: vars.CONTOSO_DEPLOYMENTS_ENABLED == 'true' && github.event_name == 'workflow_dispatch'
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 20

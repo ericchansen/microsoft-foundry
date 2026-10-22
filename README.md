@@ -40,6 +40,11 @@ old successful run is not a current readiness certificate.
 
 ## Quick start
 
+Cloud deployment and paid live jobs require the
+[repository variable](https://docs.github.com/actions/learn-github-actions/contexts#vars-context)
+`CONTOSO_DEPLOYMENTS_ENABLED` to equal `true`. Unset or `false` keeps those jobs
+paused; validation CI remains enabled.
+
 ```bash
 python -m venv .venv && . .venv/bin/activate     # Windows: .venv\Scripts\activate
 pip install -e ".[dev,docs,research,field]"

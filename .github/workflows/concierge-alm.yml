@@ -81,7 +81,7 @@ jobs:
         run: ./scripts/concierge-alm.ps1 -Operation AssertReleaseSource
 
   package:
-    if: inputs.operation == 'package'
+    if: vars.CONTOSO_DEPLOYMENTS_ENABLED == 'true' && inputs.operation == 'package'
     needs:
       - contract
       - release-source
@@ -149,7 +149,7 @@ jobs:
           if-no-files-found: error
 
   import-test:
-    if: inputs.operation == 'import-test'
+    if: vars.CONTOSO_DEPLOYMENTS_ENABLED == 'true' && inputs.operation == 'import-test'
     needs: contract
     runs-on: ubuntu-latest
     environment: concierge-test
@@ -202,7 +202,7 @@ jobs:
           echo "No PROD-eligible artifact exists until accept-test passes."
 
   accept-test:
-    if: inputs.operation == 'accept-test'
+    if: vars.CONTOSO_DEPLOYMENTS_ENABLED == 'true' && inputs.operation == 'accept-test'
     needs: contract
     runs-on: ubuntu-latest
     environment: concierge-test-acceptance
@@ -249,7 +249,7 @@ jobs:
           if-no-files-found: error
 
   import-prod:
-    if: inputs.operation == 'import-prod'
+    if: vars.CONTOSO_DEPLOYMENTS_ENABLED == 'true' && inputs.operation == 'import-prod'
     needs: contract
     runs-on: ubuntu-latest
     environment: concierge-prod-approval
